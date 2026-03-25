@@ -95,6 +95,9 @@
       const [scanFlash, setScanFlash] = useState(false);
       const [operatorScannerOpen, setOperatorScannerOpen] = useState(false);
       const [lastScannedItem, setLastScannedItem] = useState(null);
+      const [pendingScanCode, setPendingScanCode] = useState("");
+      const [pendingItem, setPendingItem] = useState(null);
+      const [awaitingConfirm, setAwaitingConfirm] = useState(false);
 
       async function stopBarcodeScanner() {
         try {
@@ -132,6 +135,7 @@
               if (!code) return;
 
               if (operatorScannerOpen) {
+                if (awaitingConfirm) return;
                 await handleOperatorScan(code);
                 return;
               }
@@ -169,12 +173,13 @@
           return;
         }
 
+        setPendingScanCode(code);
+        setPendingItem(foundItem);
+        setAwaitingConfirm(true);
         setLastScannedItem(foundItem);
+
         setScanFlash(true);
         setTimeout(() => setScanFlash(false), 200);
-
-        setScanCode(code);
-        await processBarcodeScan();
       }
 
       function normalizeCode(value) {
@@ -910,10 +915,37 @@
                   </div>
                 </div>
 
-                {lastScannedItem && (
-                  <div className="mt-3 p-3 rounded-xl bg-green-500/10 border border-green-400/20 text-sm">
-                    <p className="text-green-300 font-medium">Lido:</p>
-                    <p className="text-white">{lastScannedItem.name}</p>
+                {pendingItem && (
+                  <div className="mt-3 p-3 rounded-xl bg-green-500/10 border border-green-400/20 text-sm space-y-2">
+                    <p className="text-green-300 font-medium">Detectado:</p>
+                    <p className="text-white">{pendingItem.name}</p>
+
+                    <div className="flex gap-2">
+                      <Button
+                        className="w-full"
+                        onClick={async () => {
+                          setScanCode(pendingScanCode);
+                          await processBarcodeScan();
+                          setPendingItem(null);
+                          setPendingScanCode("");
+                          setAwaitingConfirm(false);
+                        }}
+                      >
+                        Confirmar
+                      </Button>
+
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => {
+                          setPendingItem(null);
+                          setPendingScanCode("");
+                          setAwaitingConfirm(false);
+                        }}
+                      >
+                        Ignorar
+                      </Button>
+                    </div>
                   </div>
                 )}
               </div>
