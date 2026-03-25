@@ -71,6 +71,7 @@
       const [eventLocation, setEventLocation] = useState("");
       const [eventNotes, setEventNotes] = useState("");
       const [selectedItems, setSelectedItems] = useState([]);
+      const [editingEvent, setEditingEvent] = useState(null);
 
       const [operatorView, setOperatorView] = useState({ eventId: null, tab: "saida" });
       const [scanCode, setScanCode] = useState("");
@@ -239,9 +240,34 @@
         setTab("patrimonio");
         setEventsView("lista");
         setEditingItem(null);
+        setEditingEvent(null);
+        setEventName("");
+        setEventDate("");
+        setEventLocation("");
+        setEventNotes("");
         setSelectedItems([]);
         setOperatorView({ eventId: null, tab: "saida" });
         setScanCode("");
+        setScanMessage("");
+      }
+
+      function resetEventForm() {
+        setEditingEvent(null);
+        setEventName("");
+        setEventDate("");
+        setEventLocation("");
+        setEventNotes("");
+        setSelectedItems([]);
+      }
+
+      function startEditEvent(event) {
+        setEditingEvent(event);
+        setEventName(event.name || "");
+        setEventDate(event.date || "");
+        setEventLocation(event.location || "");
+        setEventNotes(event.notes || "");
+        setSelectedItems(event.items || []);
+        setEventsView("novo");
         setScanMessage("");
       }
 
@@ -332,7 +358,6 @@
 
         setItems(items.filter((item) => item.id !== id));
         setSelectedItems(selectedItems.filter((item) => item.id !== id));
-        setMaintenanceIds(maintenanceIds.filter((itemId) => itemId !== id));
 
         const updatedEvents = events.map((event) => ({
           ...event,
@@ -409,13 +434,63 @@
         }
 
         setEvents([normalizeEvent(data || { ...newEvent, id: Date.now() }), ...events]);
-        setEventName("");
-        setEventDate("");
-        setEventLocation("");
-        setEventNotes("");
-        setSelectedItems([]);
+        resetEventForm();
         setEventsView("lista");
         setScanMessage("");
+      }
+
+      async function updateEvent() {
+        if (!editingEvent || !eventName || !eventDate) return;
+
+        const updatedEvent = {
+          ...editingEvent,
+          name: eventName,
+          date: eventDate,
+          location: eventLocation,
+          notes: eventNotes,
+          items: selectedItems,
+        };
+
+        const { error } = await supabase
+          .from("events")
+          .update({
+            name: updatedEvent.name,
+            date: updatedEvent.date,
+            location: updatedEvent.location,
+            notes: updatedEvent.notes,
+            items: updatedEvent.items,
+          })
+          .eq("id", editingEvent.id);
+
+        if (error) {
+          setScanMessage("Erro ao atualizar evento.");
+          return;
+        }
+
+        setEvents((prev) => prev.map((event) => event.id === editingEvent.id ? normalizeEvent(updatedEvent) : event));
+        resetEventForm();
+        setEventsView("lista");
+        setScanMessage("");
+      }
+
+      async function deleteEvent(eventId) {
+        const { error } = await supabase.from("events").delete().eq("id", eventId);
+
+        if (error) {
+          setScanMessage("Erro ao excluir evento.");
+          return;
+        }
+
+        setEvents((prev) => prev.filter((event) => event.id !== eventId));
+
+        if (editingEvent?.id === eventId) {
+          resetEventForm();
+          setEventsView("lista");
+        }
+
+        if (operatorView.eventId === eventId) {
+          setOperatorView({ eventId: null, tab: "saida" });
+        }
       }
 
       const activeOperatorEvent = useMemo(
@@ -895,7 +970,7 @@
                 {eventsView === "novo" && role === "admin" && (
                   <div className="rounded-3xl border border-white/10 bg-white/5 p-4 backdrop-blur">
                     <div className="mb-3">
-                      <h2 className="text-lg font-semibold">Criar evento</h2>
+                      <h2 className="text-lg font-semibold">{editingEvent ? "Editar evento" : "Criar evento"}</h2>
                     </div>
                     <div className="space-y-3">
                       <Input placeholder="Nome do evento" value={eventName} onChange={(e) => setEventName(e.target.value)} />
@@ -914,7 +989,8 @@
                             <p className="text-slate-400">Nenhum item catalogado.</p>
                           ) : (
                             items.map((item) => {
-                              const available = isItemAvailable(item);
+                              const selected = !!selectedItems.find((i) => i.id === item.id);
+                              const available = isItemAvailable(item) || selected;
                               return (
                                 <label
                                   key={item.id}
@@ -923,7 +999,7 @@
                                   <input
                                     type="checkbox"
                                     disabled={!available}
-                                    checked={!!selectedItems.find((i) => i.id === item.id)}
+                                    checked={selected}
                                     onChange={() => toggleItem(item)}
                                   />
                                   <span className="text-slate-200">
@@ -936,14 +1012,193 @@
                           )}
                         </div>
                       </div>
-                      <Button onClick={addEvent} className="w-full">Cadastrar evento</Button>
+                      <div className="grid grid-cols-2 gap-3">
+                        <Button onClick={editingEvent ? updateEvent : addEvent} className="w-full">
+                          {editingEvent ? "Salvar evento" : "Cadastrar evento"}
+                        </Button>
+                        <Button variant="outline" onClick={() => {
+                          resetEventForm();
+                          setEventsView("lista");
+                        }} className="w-full">
+                          Cancelar
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 )}
 
                 {(eventsView === "lista" || role === "operador") && (
                   <div className="space-y-3">
-                    {events.length === 0 ? (
+                    {role === "operador" && activeOperatorEvent ? (
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between gap-3 rounded-3xl border border-white/10 bg-white/5 p-4 backdrop-blur">
+                          <div>
+                            <p className="text-xs uppercase tracking-[0.22em] text-emerald-200">Evento aberto</p>
+                            <h2 className="mt-1 text-xl font-bold text-white">{activeOperatorEvent.name}</h2>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setOperatorView({ eventId: null, tab: "saida" });
+                              setScanCode("");
+                              setScanMessage("");
+                            }}
+                            className="rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10"
+                          >
+                            Voltar
+                          </Button>
+                        </div>
+
+                        <div className="rounded-3xl border border-white/10 bg-white/5 p-4 backdrop-blur space-y-3">
+                          <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-3 text-sm text-slate-300 space-y-2">
+                            <p><span className="text-slate-400">Data:</span> {activeOperatorEvent.date || "-"}</p>
+                            <p><span className="text-slate-400">Local:</span> {activeOperatorEvent.location || "-"}</p>
+                            <p><span className="text-slate-400">Informações:</span> {activeOperatorEvent.notes || "-"}</p>
+                          </div>
+
+                          <div className="flex gap-2">
+                            <Button size="sm" variant={operatorView.tab === "saida" ? "default" : "outline"} onClick={() => {
+                              setOperatorView((prev) => ({ ...prev, tab: "saida" }));
+                              setScanCode("");
+                              setScanMessage("");
+                            }} className={operatorView.tab === "saida" ? "rounded-2xl bg-blue-600 hover:bg-blue-500" : "rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10"}>
+                              Saída
+                            </Button>
+
+                            {activeOperatorEvent.saidaConcluida && (
+                              <Button
+                                size="sm"
+                                variant={operatorView.tab === "entrada" ? "default" : "outline"}
+                                onClick={() => {
+                                  setOperatorView((prev) => ({ ...prev, tab: "entrada" }));
+                                  setScanCode("");
+                                  setScanMessage("");
+                                }}
+                                className={operatorView.tab === "entrada" ? "rounded-2xl bg-emerald-600 hover:bg-emerald-500" : "rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10"}
+                              >
+                                Entrada
+                              </Button>
+                            )}
+                          </div>
+
+                          <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-3 space-y-3">
+                            <p className="text-sm font-medium text-white">
+                              {operatorView.tab === "saida" ? "Leitura de saída" : "Leitura de entrada"}
+                            </p>
+
+                            <Input
+                              placeholder="Leia ou digite o código de barras"
+                              value={scanCode}
+                              onChange={(e) => setScanCode(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  processBarcodeScan();
+                                }
+                              }}
+                              className="bg-white/5 text-white border-white/10"
+                            />
+
+                            <Button onClick={processBarcodeScan} className="w-full rounded-2xl bg-blue-600 hover:bg-blue-500">Confirmar leitura</Button>
+
+                            {scanMessage && <p className="text-xs text-slate-300">{scanMessage}</p>}
+
+                            {activeOperatorEvent.saidaConcluida &&
+                              operatorView.tab === "saida" &&
+                              scanMessage.includes("Deseja ir para entrada") && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    setOperatorView((prev) => ({ ...prev, tab: "entrada" }));
+                                    setScanMessage("");
+                                    setScanCode("");
+                                  }}
+                                  className="w-full rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10"
+                                >
+                                  Ir para entrada
+                                </Button>
+                              )}
+
+                            {operatorView.tab === "saida" && !activeOperatorEvent.saidaConcluida && (() => {
+                              const totalItens = activeOperatorEvent.items.length;
+                              const totalConfirmados = activeOperatorEvent.saidaConfirmados.length;
+                              const podeConcluirSaida = totalItens > 0 && totalConfirmados === totalItens;
+
+                              return (
+                                <>
+                                  {!podeConcluirSaida && (
+                                    <p className="text-xs text-red-300">
+                                      Confirme a leitura de todos os itens para concluir a saída.
+                                    </p>
+                                  )}
+
+                                  <Button
+                                    variant="secondary"
+                                    disabled={!podeConcluirSaida}
+                                    onClick={async () => {
+                                      if (!podeConcluirSaida) return;
+
+                                      const patch = {
+                                        saidaConcluida: true,
+                                        saidaConcluidaEm: new Date().toLocaleString("pt-BR"),
+                                      };
+
+                                      const ok = await saveEventUpdate(activeOperatorEvent.id, patch);
+                                      if (!ok) {
+                                        setScanMessage("Erro ao concluir saída.");
+                                        return;
+                                      }
+
+                                      setEvents(
+                                        events.map((event) =>
+                                          event.id === activeOperatorEvent.id ? { ...event, ...patch } : event
+                                        )
+                                      );
+                                      setScanCode("");
+                                      setScanMessage("Bom evento! 🎉 Deseja ir para entrada?");
+                                    }}
+                                    className="w-full rounded-2xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50"
+                                  >
+                                    Concluir saída
+                                  </Button>
+                                </>
+                              );
+                            })()}
+                          </div>
+
+                          <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-3 space-y-2">
+                            {activeOperatorEvent.items.length === 0 ? (
+                              <p className="text-xs text-slate-400">Sem itens</p>
+                            ) : (
+                              activeOperatorEvent.items.map((i) => {
+                                const confirmed = isConfirmed(activeOperatorEvent, i, operatorView.tab);
+                                return (
+                                  <div
+                                    key={i.id}
+                                    className="flex items-center justify-between gap-2 rounded-xl border border-white/5 bg-white/[0.03] px-3 py-2 text-xs"
+                                  >
+                                    <div>
+                                      <p className="text-white">
+                                        {i.name} ({i.category}) - {i.quantity} unidade{i.quantity > 1 ? "s" : ""}
+                                      </p>
+                                      <p className="text-slate-400">Código: {i.barcode}</p>
+                                    </div>
+                                    <span
+                                      className={
+                                        confirmed ? "font-medium text-green-400" : "font-medium text-red-400"
+                                      }
+                                    >
+                                      {confirmed ? "Lido" : "Pendente"}
+                                    </span>
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ) : events.length === 0 ? (
                       <div className="rounded-3xl border border-white/10 bg-white/5 p-4 text-sm text-slate-400 backdrop-blur">
                         Nenhum evento programado.
                       </div>
@@ -967,6 +1222,15 @@
 
                           {role === "admin" && (
                             <div className="mt-4 grid gap-3 text-sm text-slate-300">
+                              <div className="flex gap-2 flex-wrap">
+                                <Button size="sm" onClick={() => startEditEvent(ev)} className="bg-white/10 hover:bg-white/15">
+                                  Editar evento
+                                </Button>
+                                <Button size="sm" variant="destructive" onClick={() => deleteEvent(ev.id)}>
+                                  Excluir evento
+                                </Button>
+                              </div>
+
                               <div className="grid grid-cols-2 gap-3">
                                 <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-3">
                                   <p className="text-xs uppercase tracking-wide text-slate-400">Saída</p>
@@ -1010,7 +1274,7 @@
                             </div>
                           )}
 
-                          {role === "operador" && operatorView.eventId !== ev.id && (
+                          {role === "operador" && (
                             <Button
                               size="sm"
                               variant="outline"
@@ -1023,164 +1287,6 @@
                             >
                               Abrir
                             </Button>
-                          )}
-
-                          {role === "operador" && operatorView.eventId === ev.id && (
-                            <div className="mt-4 space-y-3">
-                              <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-3 text-sm text-slate-300 space-y-2">
-                                <p><span className="text-slate-400">Data:</span> {ev.date || "-"}</p>
-                                <p><span className="text-slate-400">Local:</span> {ev.location || "-"}</p>
-                                <p><span className="text-slate-400">Informações:</span> {ev.notes || "-"}</p>
-                              </div>
-                              <div className="flex gap-2">
-                                {operatorView.tab === "saida" && (
-                                  <Button size="sm" className="rounded-2xl bg-blue-600 hover:bg-blue-500">Saída</Button>
-                                )}
-
-                                {ev.saidaConcluida && (
-                                  <Button
-                                    size="sm"
-                                    variant={operatorView.tab === "entrada" ? "default" : "outline"}
-                                    onClick={() => {
-                                      setOperatorView({ ...operatorView, tab: "entrada" });
-                                      setScanCode("");
-                                      setScanMessage("");
-                                    }}
-                                    className={operatorView.tab === "entrada" ? "rounded-2xl bg-emerald-600 hover:bg-emerald-500" : "rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10"}
-                                  >
-                                    Entrada
-                                  </Button>
-                                )}
-
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => {
-                                    setOperatorView({ eventId: null, tab: "saida" });
-                                    setScanCode("");
-                                    setScanMessage("");
-                                  }}
-                                  className="rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10"
-                                >
-                                  Fechar
-                                </Button>
-                              </div>
-
-                              <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-3 space-y-3">
-                                <p className="text-sm font-medium text-white">
-                                  {operatorView.tab === "saida" ? "Leitura de saída" : "Leitura de entrada"}
-                                </p>
-
-                                <Input
-                                  placeholder="Leia ou digite o código de barras"
-                                  value={scanCode}
-                                  onChange={(e) => setScanCode(e.target.value)}
-                                  onKeyDown={(e) => {
-                                    if (e.key === "Enter") {
-                                      processBarcodeScan();
-                                    }
-                                  }}
-                                  className="bg-white/5 text-white border-white/10"
-                                />
-
-                                <Button onClick={processBarcodeScan} className="w-full rounded-2xl bg-blue-600 hover:bg-blue-500">Confirmar leitura</Button>
-
-                                {scanMessage && <p className="text-xs text-slate-300">{scanMessage}</p>}
-
-                                {ev.saidaConcluida &&
-                                  operatorView.tab === "saida" &&
-                                  scanMessage.includes("Deseja ir para entrada") && (
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => {
-                                        setOperatorView({ ...operatorView, tab: "entrada" });
-                                        setScanMessage("");
-                                        setScanCode("");
-                                      }}
-                                      className="w-full rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10"
-                                    >
-                                      Ir para entrada
-                                    </Button>
-                                  )}
-
-                                {operatorView.tab === "saida" && !ev.saidaConcluida && (() => {
-                                  const totalItens = ev.items.length;
-                                  const totalConfirmados = ev.saidaConfirmados.length;
-                                  const podeConcluirSaida = totalItens > 0 && totalConfirmados === totalItens;
-
-                                  return (
-                                    <>
-                                      {!podeConcluirSaida && (
-                                        <p className="text-xs text-red-300">
-                                          Confirme a leitura de todos os itens para concluir a saída.
-                                        </p>
-                                      )}
-
-                                      <Button
-                                        variant="secondary"
-                                        disabled={!podeConcluirSaida}
-                                        onClick={async () => {
-                                          if (!podeConcluirSaida) return;
-
-                                          const patch = {
-                                            saidaConcluida: true,
-                                            saidaConcluidaEm: new Date().toLocaleString("pt-BR"),
-                                          };
-
-                                          const ok = await saveEventUpdate(ev.id, patch);
-                                          if (!ok) {
-                                            setScanMessage("Erro ao concluir saída.");
-                                            return;
-                                          }
-
-                                          setEvents(
-                                            events.map((event) =>
-                                              event.id === ev.id ? { ...event, ...patch } : event
-                                            )
-                                          );
-                                          setScanCode("");
-                                          setScanMessage("Bom evento! 🎉 Deseja ir para entrada?");
-                                        }}
-                                        className="w-full rounded-2xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50"
-                                      >
-                                        Concluir saída
-                                      </Button>
-                                    </>
-                                  );
-                                })()}
-                              </div>
-
-                              <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-3 space-y-2">
-                                {ev.items.length === 0 ? (
-                                  <p className="text-xs text-slate-400">Sem itens</p>
-                                ) : (
-                                  ev.items.map((i) => {
-                                    const confirmed = isConfirmed(ev, i, operatorView.tab);
-                                    return (
-                                      <div
-                                        key={i.id}
-                                        className="flex items-center justify-between gap-2 rounded-xl border border-white/5 bg-white/[0.03] px-3 py-2 text-xs"
-                                      >
-                                        <div>
-                                          <p className="text-white">
-                                            {i.name} ({i.category}) - {i.quantity} unidade{i.quantity > 1 ? "s" : ""}
-                                          </p>
-                                          <p className="text-slate-400">Código: {i.barcode}</p>
-                                        </div>
-                                        <span
-                                          className={
-                                            confirmed ? "font-medium text-green-400" : "font-medium text-red-400"
-                                          }
-                                        >
-                                          {confirmed ? "Lido" : "Pendente"}
-                                        </span>
-                                      </div>
-                                    );
-                                  })
-                                )}
-                              </div>
-                            </div>
                           )}
                         </div>
                       ))
