@@ -116,8 +116,8 @@
           await html5QrCode.start(
             { facingMode: { exact: "environment" } },
             {
-              fps: 15,
-              qrbox: { width: 320, height: 160 },
+              fps: 20,
+              qrbox: { width: 260, height: 100 },
               aspectRatio: 1.7778,
               disableFlip: true,
               rememberLastUsedCamera: true,
@@ -155,8 +155,8 @@
             await html5QrCode.start(
               { facingMode: "environment" },
               {
-                fps: 15,
-                qrbox: { width: 320, height: 160 },
+                fps: 20,
+                qrbox: { width: 260, height: 100 },
                 aspectRatio: 1.7778,
                 disableFlip: true,
                 rememberLastUsedCamera: true,
@@ -911,7 +911,7 @@
                 <div className="flex items-center justify-between gap-3 mb-3">
                   <div>
                     <h3 className="text-lg font-semibold text-white">Escanear código de barras</h3>
-                    <p className="text-xs text-slate-400">Aponte a câmera para o código de barras, com boa luz e ocupando boa parte da área de leitura.</p>
+                    <p className="text-xs text-slate-400">Centralize o código dentro da área e aproxime devagar.</p>
                   </div>
                   <Button
                     type="button"
@@ -926,12 +926,7 @@
                   </Button>
                 </div>
 
-                <div id="reader" className="overflow-hidden rounded-2xl bg-black min-h-[260px]" />
-                <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 p-3 text-xs text-slate-300 space-y-1">
-                  <p>• Teste com a câmera traseira</p>
-                  <p>• Aproxime e afaste devagar até o código ficar nítido</p>
-                  <p>• Prefira boa iluminação</p>
-                </div>
+                <div id="reader" className="overflow-hidden rounded-2xl bg-black min-h-[300px]" />
               </div>
             </div>
           )}
