@@ -2,11 +2,12 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>StageSync</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 </head>
 <body class="bg-slate-950">
@@ -14,6 +15,30 @@
 
   <script type="text/babel">
     const { useEffect, useMemo, useState } = React;
+
+    const SUPABASE_URL = "https://mwmewkhowltrwyboakvl.supabase.co";
+    const SUPABASE_ANON_KEY = "sb_publishable_l-xO9VFLWY5IA1D5pM56-w_dMqM41e9";
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    function Card({ children, className = "" }) {
+      return <div className={`rounded-3xl border border-white/10 bg-white/5 backdrop-blur ${className}`}>{children}</div>;
+    }
+
+    function CardContent({ children, className = "" }) {
+      return <div className={`p-4 ${className}`}>{children}</div>;
+    }
+
+    function Button({ children, className = "", variant = "default", size = "default", ...props }) {
+      const base = "inline-flex items-center justify-center rounded-2xl font-medium transition disabled:opacity-50 disabled:cursor-not-allowed";
+      const sizes = { default: "px-4 py-2 text-sm", sm: "px-3 py-2 text-xs" };
+      const variants = {
+        default: "bg-blue-600 hover:bg-blue-500 text-white",
+        outline: "border border-white/10 bg-white/5 text-white hover:bg-white/10",
+        secondary: "bg-emerald-600 hover:bg-emerald-500 text-white",
+        destructive: "bg-red-600 hover:bg-red-500 text-white"
+      };
+      return <button {...props} className={`${base} ${sizes[size] || sizes.default} ${variants[variant] || variants.default} ${className}`}>{children}</button>;
+    }
 
     function Input(props) {
       const extra = props.className || "";
@@ -25,33 +50,6 @@
       );
     }
 
-    function Button({ children, className = "", variant = "default", size = "default", ...props }) {
-      const base = "inline-flex items-center justify-center rounded-2xl font-medium transition disabled:opacity-50 disabled:cursor-not-allowed";
-      const sizes = {
-        default: "px-4 py-2 text-sm",
-        sm: "px-3 py-2 text-xs"
-      };
-      const variants = {
-        default: "bg-blue-600 hover:bg-blue-500 text-white",
-        outline: "border border-white/10 bg-white/5 text-white hover:bg-white/10",
-        secondary: "bg-emerald-600 hover:bg-emerald-500 text-white",
-        destructive: "bg-red-600 hover:bg-red-500 text-white"
-      };
-      return (
-        <button {...props} className={`${base} ${sizes[size] || sizes.default} ${variants[variant] || variants.default} ${className}`}>
-          {children}
-        </button>
-      );
-    }
-
-    function Card({ children, className = "" }) {
-      return <div className={`rounded-3xl border border-white/10 bg-white/5 backdrop-blur ${className}`}>{children}</div>;
-    }
-
-    function CardContent({ children, className = "" }) {
-      return <div className={`p-4 ${className}`}>{children}</div>;
-    }
-
     function App() {
       const [role, setRole] = useState(null);
       const [tab, setTab] = useState("patrimonio");
@@ -59,6 +57,7 @@
 
       const [items, setItems] = useState([]);
       const [events, setEvents] = useState([]);
+      const [loading, setLoading] = useState(true);
 
       const [name, setName] = useState("");
       const [category, setCategory] = useState("som");
@@ -66,7 +65,10 @@
       const [barcode, setBarcode] = useState("");
 
       const [editingItem, setEditingItem] = useState(null);
-      const [maintenanceIds, setMaintenanceIds] = useState([]);
+      const [maintenanceIds, setMaintenanceIds] = useState(() => {
+        try { return JSON.parse(localStorage.getItem("stagesync_maintenance_ids") || "[]"); }
+        catch { return []; }
+      });
 
       const [eventName, setEventName] = useState("");
       const [eventDate, setEventDate] = useState("");
@@ -75,63 +77,66 @@
       const [operatorView, setOperatorView] = useState({ eventId: null, tab: "saida" });
       const [scanCode, setScanCode] = useState("");
       const [scanMessage, setScanMessage] = useState("");
-      const [errorLog, setErrorLog] = useState([]);
-      const [errorPanelOpen, setErrorPanelOpen] = useState(false);
+      const [syncMessage, setSyncMessage] = useState("");
 
-      function addErrorEntry(source, error, details = "") {
-        const message = typeof error === "string"
-          ? error
-          : error?.message || error?.toString?.() || "Erro desconhecido";
+      useEffect(() => {
+        localStorage.setItem("stagesync_maintenance_ids", JSON.stringify(maintenanceIds));
+      }, [maintenanceIds]);
 
-        const entry = {
-          id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-          source,
-          message,
-          details,
-          time: new Date().toLocaleString("pt-BR"),
-        };
-
-        setErrorLog((prev) => [entry, ...prev].slice(0, 100));
+      function normalizeCode(value) {
+        return String(value || "").trim();
       }
 
-      function clearErrorLog() {
-        setErrorLog([]);
+      function toArray(value) {
+        if (Array.isArray(value)) return value;
+        if (value == null || value === "") return [];
+        try { return JSON.parse(value); } catch { return []; }
+      }
+
+      function normalizeEvent(event) {
+        return {
+          ...event,
+          items: toArray(event.items),
+          saidaConfirmados: toArray(event.saidaConfirmados),
+          entradaConfirmados: toArray(event.entradaConfirmados),
+          saidaHistorico: toArray(event.saidaHistorico),
+          entradaHistorico: toArray(event.entradaHistorico),
+          saidaConcluida: !!event.saidaConcluida,
+          finalizado: !!event.finalizado,
+          saidaConcluidaEm: event.saidaConcluidaEm || "",
+          entradaConcluidaEm: event.entradaConcluidaEm || "",
+        };
+      }
+
+      async function fetchAll(showLoading = true) {
+        if (showLoading) setLoading(true);
+
+        const [{ data: itemsData, error: itemsError }, { data: eventsData, error: eventsError }] =
+          await Promise.all([
+            supabase.from("items").select("*").order("id", { ascending: false }),
+            supabase.from("events").select("*").order("id", { ascending: false }),
+          ]);
+
+        if (itemsError) {
+          setSyncMessage("Erro ao carregar itens.");
+        } else {
+          setItems(itemsData || []);
+        }
+
+        if (eventsError) {
+          setSyncMessage("Erro ao carregar eventos.");
+        } else {
+          setEvents((eventsData || []).map(normalizeEvent));
+        }
+
+        if (!itemsError && !eventsError) setSyncMessage("");
+        if (showLoading) setLoading(false);
       }
 
       useEffect(() => {
-        const previousConsoleError = console.error;
-
-        const handleWindowError = (event) => {
-          addErrorEntry(
-            "window.error",
-            event?.error || event?.message || "Erro de execução",
-            event?.filename
-              ? `${event.filename}${event.lineno ? `:${event.lineno}` : ""}`
-              : ""
-          );
-        };
-
-        const handleUnhandledRejection = (event) => {
-          addErrorEntry("unhandledrejection", event?.reason || "Promise rejeitada sem tratamento");
-        };
-
-        console.error = (...args) => {
-          previousConsoleError(...args);
-          const formatted = args.map((arg) => {
-            if (typeof arg === "string") return arg;
-            try { return JSON.stringify(arg); } catch { return String(arg); }
-          }).join(" | ");
-          addErrorEntry("console.error", formatted);
-        };
-
-        window.addEventListener("error", handleWindowError);
-        window.addEventListener("unhandledrejection", handleUnhandledRejection);
-
-        return () => {
-          console.error = previousConsoleError;
-          window.removeEventListener("error", handleWindowError);
-          window.removeEventListener("unhandledrejection", handleUnhandledRejection);
-        };
+        fetchAll();
+        const interval = setInterval(() => fetchAll(false), 4000);
+        return () => clearInterval(interval);
       }, []);
 
       function selectRole(nextRole) {
@@ -150,11 +155,7 @@
         }
       }
 
-      function normalizeCode(value) {
-        return String(value || "").trim();
-      }
-
-      function addItem() {
+      async function addItem() {
         if (!name || !category || !quantity || !barcode) return;
 
         const normalizedName = String(name).trim();
@@ -167,14 +168,20 @@
         }
 
         const newItem = {
-          id: (crypto?.randomUUID?.() || String(Date.now() + Math.random())),
           name: normalizedName,
           category,
           quantity: Number(quantity),
           barcode: normalizedBarcode,
         };
 
-        setItems((prev) => [...prev, newItem]);
+        const { data, error } = await supabase.from("items").insert([newItem]).select().single();
+
+        if (error) {
+          setScanMessage("Erro ao cadastrar item.");
+          return;
+        }
+
+        setItems((prev) => [data || { ...newItem, id: crypto.randomUUID() }, ...prev]);
         setName("");
         setCategory("som");
         setQuantity("1");
@@ -182,7 +189,7 @@
         setScanMessage("");
       }
 
-      function updateItem() {
+      async function updateItem() {
         if (!editingItem) return;
 
         const normalizedBarcode = normalizeCode(editingItem.barcode);
@@ -202,29 +209,64 @@
           barcode: normalizedBarcode,
         };
 
+        const { error } = await supabase
+          .from("items")
+          .update({
+            name: updatedItem.name,
+            category: updatedItem.category,
+            quantity: updatedItem.quantity,
+            barcode: updatedItem.barcode,
+          })
+          .eq("id", updatedItem.id);
+
+        if (error) {
+          setScanMessage("Erro ao atualizar item.");
+          return;
+        }
+
         setItems(items.map((item) => (item.id === editingItem.id ? updatedItem : item)));
         setEditingItem(null);
         setScanMessage("");
       }
 
-      function deleteItem(id) {
+      async function deleteItem(id) {
+        const { error } = await supabase.from("items").delete().eq("id", id);
+
+        if (error) {
+          setScanMessage("Erro ao excluir item.");
+          return;
+        }
+
         setItems(items.filter((item) => item.id !== id));
         setSelectedItems(selectedItems.filter((item) => item.id !== id));
         setMaintenanceIds(maintenanceIds.filter((itemId) => itemId !== id));
 
-        setEvents(
-          events.map((event) => ({
-            ...event,
-            items: event.items.filter((item) => item.id !== id),
-            saidaConfirmados: event.saidaConfirmados.filter((code) => {
-              const found = event.items.find((item) => item.barcode === code);
-              return found && found.id !== id;
-            }),
-            entradaConfirmados: event.entradaConfirmados.filter((code) => {
-              const found = event.items.find((item) => item.barcode === code);
-              return found && found.id !== id;
-            }),
-          }))
+        const updatedEvents = events.map((event) => ({
+          ...event,
+          items: event.items.filter((item) => item.id !== id),
+          saidaConfirmados: event.saidaConfirmados.filter((code) => {
+            const found = event.items.find((item) => item.barcode === code);
+            return found && found.id !== id;
+          }),
+          entradaConfirmados: event.entradaConfirmados.filter((code) => {
+            const found = event.items.find((item) => item.barcode === code);
+            return found && found.id !== id;
+          }),
+        }));
+
+        setEvents(updatedEvents);
+
+        await Promise.all(
+          updatedEvents.map((event) =>
+            supabase
+              .from("events")
+              .update({
+                items: event.items,
+                saidaConfirmados: event.saidaConfirmados,
+                entradaConfirmados: event.entradaConfirmados,
+              })
+              .eq("id", event.id)
+          )
         );
       }
 
@@ -251,11 +293,10 @@
         }
       }
 
-      function addEvent() {
+      async function addEvent() {
         if (!eventName || !eventDate) return;
 
         const newEvent = {
-          id: Date.now(),
           name: eventName,
           date: eventDate,
           items: selectedItems,
@@ -269,7 +310,14 @@
           entradaHistorico: [],
         };
 
-        setEvents([newEvent, ...events]);
+        const { data, error } = await supabase.from("events").insert([newEvent]).select().single();
+
+        if (error) {
+          setScanMessage("Erro ao cadastrar evento.");
+          return;
+        }
+
+        setEvents([normalizeEvent(data || { ...newEvent, id: Date.now() }), ...events]);
         setEventName("");
         setEventDate("");
         setSelectedItems([]);
@@ -282,7 +330,12 @@
         [events, operatorView.eventId]
       );
 
-      function processBarcodeScan() {
+      async function saveEventUpdate(eventId, patch) {
+        const { error } = await supabase.from("events").update(patch).eq("id", eventId);
+        return !error;
+      }
+
+      async function processBarcodeScan() {
         if (!activeOperatorEvent) return;
 
         const normalized = normalizeCode(scanCode);
@@ -321,6 +374,17 @@
                   }
                 : event
             );
+
+            const updatedEvent = updatedEvents.find((e) => e.id === activeOperatorEvent.id);
+            const ok = await saveEventUpdate(updatedEvent.id, {
+              saidaConfirmados: updatedEvent.saidaConfirmados,
+              saidaHistorico: updatedEvent.saidaHistorico,
+            });
+
+            if (!ok) {
+              setScanMessage("Erro ao salvar saída.");
+              return;
+            }
 
             setEvents(updatedEvents);
             setScanMessage(`Saída confirmada: ${foundItem.name}`);
@@ -364,10 +428,34 @@
                     }
                   : event
               );
+
+              const finalEvent = finalEvents.find((e) => e.id === activeOperatorEvent.id);
+              const ok = await saveEventUpdate(finalEvent.id, {
+                entradaConfirmados: finalEvent.entradaConfirmados,
+                entradaHistorico: finalEvent.entradaHistorico,
+                finalizado: true,
+                entradaConcluidaEm: finalEvent.entradaConcluidaEm,
+              });
+
+              if (!ok) {
+                setScanMessage("Erro ao finalizar entrada.");
+                return;
+              }
+
               setEvents(finalEvents);
               setOperatorView({ eventId: null, tab: "saida" });
               setScanMessage("Evento finalizado! ✅");
             } else {
+              const ok = await saveEventUpdate(updatedEvent.id, {
+                entradaConfirmados: updatedEvent.entradaConfirmados,
+                entradaHistorico: updatedEvent.entradaHistorico,
+              });
+
+              if (!ok) {
+                setScanMessage("Erro ao salvar entrada.");
+                return;
+              }
+
               setEvents(updatedEvents);
               setScanMessage(`Entrada confirmada: ${foundItem.name}`);
             }
@@ -378,7 +466,9 @@
       }
 
       function isConfirmed(event, item, currentTab) {
-        if (currentTab === "saida") return event.saidaConfirmados.includes(item.barcode);
+        if (currentTab === "saida") {
+          return event.saidaConfirmados.includes(item.barcode);
+        }
         return event.entradaConfirmados.includes(item.barcode);
       }
 
@@ -386,7 +476,6 @@
         if (maintenanceIds.includes(item.id)) {
           return {
             label: "Em manutenção",
-            detail: "Parado para manutenção",
             badge: "text-yellow-700 bg-yellow-100",
           };
         }
@@ -398,7 +487,6 @@
         if (activeEvent) {
           return {
             label: "Em uso",
-            detail: `Evento: ${activeEvent.name} • Etapa: ${activeEvent.saidaConcluida ? "entrada" : "saída"}`,
             badge: activeEvent.saidaConcluida
               ? "text-purple-700 bg-purple-100"
               : "text-blue-700 bg-blue-100",
@@ -407,7 +495,6 @@
 
         return {
           label: "Disponível",
-          detail: "Livre para uso",
           badge: "text-green-700 bg-green-100",
         };
       }
@@ -424,6 +511,16 @@
 
         setMaintenanceIds((prev) =>
           prev.includes(itemId) ? prev.filter((id) => id !== itemId) : [...prev, itemId]
+        );
+      }
+
+      if (loading) {
+        return (
+          <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 text-white flex items-center justify-center p-4">
+            <div className="rounded-2xl border border-white/10 bg-white/5 px-5 py-4 text-sm text-slate-300">
+              Carregando dados...
+            </div>
+          </div>
         );
       }
 
@@ -494,15 +591,19 @@
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-xs uppercase tracking-[0.22em] text-blue-200">StageSync</p>
-                  <h1 className="mt-1 text-2xl font-bold tracking-tight">
-                    {role === "admin" ? "Painel administrativo" : "Painel do operador"}
-                  </h1>
+                  <h1 className="mt-1 text-2xl font-bold tracking-tight">{role === "admin" ? "Painel administrativo" : "Painel do operador"}</h1>
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-white/10 px-3 py-2 text-xs font-medium text-slate-200">
                   {role}
                 </div>
               </div>
             </div>
+
+            {syncMessage && (
+              <div className="mb-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-xs text-slate-300">
+                {syncMessage}
+              </div>
+            )}
 
             {role === "admin" && (
               <div className="mb-4 grid grid-cols-2 gap-3">
@@ -612,11 +713,19 @@
                                 </span>
                               </div>
                               <div className="mt-3 flex gap-2 flex-wrap">
-                                <Button size="sm" onClick={() => setEditingItem({ ...item })} className="bg-white/10 hover:bg-white/15">Editar</Button>
-                                <Button size="sm" variant="outline" onClick={() => toggleMaintenance(item.id)}>
+                                <Button size="sm" onClick={() => setEditingItem({ ...item })} className="bg-white/10 hover:bg-white/15">
+                                  Editar
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => toggleMaintenance(item.id)}
+                                >
                                   {maintenanceIds.includes(item.id) ? "Liberar" : "Manutenção"}
                                 </Button>
-                                <Button size="sm" variant="destructive" onClick={() => deleteItem(item.id)}>Excluir</Button>
+                                <Button size="sm" variant="destructive" onClick={() => deleteItem(item.id)}>
+                                  Excluir
+                                </Button>
                               </div>
                             </div>
                           );
@@ -642,6 +751,7 @@
                       }`}
                     >
                       <p className="text-sm font-semibold">Programados</p>
+                      <p className="mt-1 text-xs text-slate-400">Acompanhar</p>
                     </button>
                     <button
                       type="button"
@@ -653,12 +763,16 @@
                       }`}
                     >
                       <p className="text-sm font-semibold">Novo evento</p>
+                      <p className="mt-1 text-xs text-slate-400">Criar</p>
                     </button>
                   </div>
                 )}
 
                 {eventsView === "novo" && role === "admin" && (
                   <div className="rounded-3xl border border-white/10 bg-white/5 p-4 backdrop-blur">
+                    <div className="mb-3">
+                      <h2 className="text-lg font-semibold">Criar evento</h2>
+                    </div>
                     <div className="space-y-3">
                       <Input placeholder="Nome do evento" value={eventName} onChange={(e) => setEventName(e.target.value)} />
                       <Input type="date" value={eventDate} onChange={(e) => setEventDate(e.target.value)} />
@@ -671,7 +785,10 @@
                             items.map((item) => {
                               const available = isItemAvailable(item);
                               return (
-                                <label key={item.id} className={`flex items-center gap-2 rounded-xl px-2 py-2 ${!available ? "opacity-50" : ""}`}>
+                                <label
+                                  key={item.id}
+                                  className={`flex items-center gap-2 rounded-xl px-2 py-2 ${!available ? "opacity-50" : ""}`}
+                                >
                                   <input
                                     type="checkbox"
                                     disabled={!available}
@@ -727,6 +844,32 @@
                                   <p className="mt-1 text-xs text-slate-400">Horário: {ev.entradaConcluidaEm || "-"}</p>
                                 </div>
                               </div>
+
+                              <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-3">
+                                <p className="mb-2 text-sm font-medium text-white">Registros de saída</p>
+                                {ev.saidaHistorico.length === 0 ? (
+                                  <p className="text-xs text-slate-400">Sem registros</p>
+                                ) : (
+                                  ev.saidaHistorico.map((registro) => (
+                                    <p key={registro.id} className="text-xs text-slate-300">
+                                      {registro.itemName} • {registro.time}
+                                    </p>
+                                  ))
+                                )}
+                              </div>
+
+                              <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-3">
+                                <p className="mb-2 text-sm font-medium text-white">Registros de entrada</p>
+                                {ev.entradaHistorico.length === 0 ? (
+                                  <p className="text-xs text-slate-400">Sem registros</p>
+                                ) : (
+                                  ev.entradaHistorico.map((registro) => (
+                                    <p key={registro.id} className="text-xs text-slate-300">
+                                      {registro.itemName} • {registro.time}
+                                    </p>
+                                  ))
+                                )}
+                              </div>
                             </div>
                           )}
 
@@ -739,7 +882,7 @@
                                 setScanCode("");
                                 setScanMessage("");
                               }}
-                              className="mt-4"
+                              className="mt-4 rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10"
                             >
                               Abrir
                             </Button>
@@ -749,7 +892,7 @@
                             <div className="mt-4 space-y-3">
                               <div className="flex gap-2">
                                 {operatorView.tab === "saida" && (
-                                  <Button size="sm">Saída</Button>
+                                  <Button size="sm" className="rounded-2xl bg-blue-600 hover:bg-blue-500">Saída</Button>
                                 )}
 
                                 {ev.saidaConcluida && (
@@ -761,6 +904,7 @@
                                       setScanCode("");
                                       setScanMessage("");
                                     }}
+                                    className={operatorView.tab === "entrada" ? "rounded-2xl bg-emerald-600 hover:bg-emerald-500" : "rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10"}
                                   >
                                     Entrada
                                   </Button>
@@ -774,6 +918,7 @@
                                     setScanCode("");
                                     setScanMessage("");
                                   }}
+                                  className="rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10"
                                 >
                                   Fechar
                                 </Button>
@@ -789,11 +934,14 @@
                                   value={scanCode}
                                   onChange={(e) => setScanCode(e.target.value)}
                                   onKeyDown={(e) => {
-                                    if (e.key === "Enter") processBarcodeScan();
+                                    if (e.key === "Enter") {
+                                      processBarcodeScan();
+                                    }
                                   }}
+                                  className="bg-white/5 text-white border-white/10"
                                 />
 
-                                <Button onClick={processBarcodeScan} className="w-full">Confirmar leitura</Button>
+                                <Button onClick={processBarcodeScan} className="w-full rounded-2xl bg-blue-600 hover:bg-blue-500">Confirmar leitura</Button>
 
                                 {scanMessage && <p className="text-xs text-slate-300">{scanMessage}</p>}
 
@@ -808,7 +956,7 @@
                                         setScanMessage("");
                                         setScanCode("");
                                       }}
-                                      className="w-full"
+                                      className="w-full rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10"
                                     >
                                       Ir para entrada
                                     </Button>
@@ -830,24 +978,29 @@
                                       <Button
                                         variant="secondary"
                                         disabled={!podeConcluirSaida}
-                                        onClick={() => {
+                                        onClick={async () => {
                                           if (!podeConcluirSaida) return;
+
+                                          const patch = {
+                                            saidaConcluida: true,
+                                            saidaConcluidaEm: new Date().toLocaleString("pt-BR"),
+                                          };
+
+                                          const ok = await saveEventUpdate(ev.id, patch);
+                                          if (!ok) {
+                                            setScanMessage("Erro ao concluir saída.");
+                                            return;
+                                          }
 
                                           setEvents(
                                             events.map((event) =>
-                                              event.id === ev.id
-                                                ? {
-                                                    ...event,
-                                                    saidaConcluida: true,
-                                                    saidaConcluidaEm: new Date().toLocaleString("pt-BR"),
-                                                  }
-                                                : event
+                                              event.id === ev.id ? { ...event, ...patch } : event
                                             )
                                           );
                                           setScanCode("");
                                           setScanMessage("Bom evento! 🎉 Deseja ir para entrada?");
                                         }}
-                                        className="w-full"
+                                        className="w-full rounded-2xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50"
                                       >
                                         Concluir saída
                                       </Button>
@@ -863,14 +1016,21 @@
                                   ev.items.map((i) => {
                                     const confirmed = isConfirmed(ev, i, operatorView.tab);
                                     return (
-                                      <div key={i.id} className="flex items-center justify-between gap-2 rounded-xl border border-white/5 bg-white/[0.03] px-3 py-2 text-xs">
+                                      <div
+                                        key={i.id}
+                                        className="flex items-center justify-between gap-2 rounded-xl border border-white/5 bg-white/[0.03] px-3 py-2 text-xs"
+                                      >
                                         <div>
                                           <p className="text-white">
                                             {i.name} ({i.category}) - {i.quantity} unidade{i.quantity > 1 ? "s" : ""}
                                           </p>
                                           <p className="text-slate-400">Código: {i.barcode}</p>
                                         </div>
-                                        <span className={confirmed ? "font-medium text-green-400" : "font-medium text-red-400"}>
+                                        <span
+                                          className={
+                                            confirmed ? "font-medium text-green-400" : "font-medium text-red-400"
+                                          }
+                                        >
                                           {confirmed ? "Lido" : "Pendente"}
                                         </span>
                                       </div>
@@ -887,62 +1047,12 @@
                 )}
               </div>
             )}
-
-            <div className="mt-6 rounded-3xl border border-red-500/20 bg-red-500/10 p-3 backdrop-blur">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold text-red-100">Janela de erros</p>
-                  <p className="text-xs text-red-200/80">Tudo que der erro no app vai aparecer aqui para você me mandar.</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="rounded-xl bg-black/20 px-2 py-1 text-xs text-red-100">
-                    {errorLog.length} erro{errorLog.length === 1 ? "" : "s"}
-                  </span>
-                  <Button size="sm" variant="outline" onClick={() => setErrorPanelOpen((prev) => !prev)}>
-                    {errorPanelOpen ? "Ocultar" : "Mostrar"}
-                  </Button>
-                </div>
-              </div>
-
-              {errorPanelOpen && (
-                <div className="mt-3 space-y-3">
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="destructive" onClick={clearErrorLog} disabled={errorLog.length === 0}>
-                      Limpar erros
-                    </Button>
-                  </div>
-
-                  <div className="max-h-80 space-y-2 overflow-auto rounded-2xl border border-white/10 bg-slate-950/50 p-2">
-                    {errorLog.length === 0 ? (
-                      <p className="p-2 text-xs text-slate-400">Nenhum erro registrado até agora.</p>
-                    ) : (
-                      errorLog.map((entry) => (
-                        <div key={entry.id} className="rounded-2xl border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-50">
-                          <p><span className="font-semibold">Origem:</span> {entry.source}</p>
-                          <p className="mt-1 break-words"><span className="font-semibold">Mensagem:</span> {entry.message}</p>
-                          {entry.details && <p className="mt-1 break-words"><span className="font-semibold">Detalhes:</span> {entry.details}</p>}
-                          <p className="mt-1 text-red-100/80"><span className="font-semibold">Horário:</span> {entry.time}</p>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <button
-              type="button"
-              onClick={() => selectRole(null)}
-              className="mt-6 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white transition hover:bg-white/10"
-            >
-              Trocar perfil
-            </button>
           </div>
         </div>
       );
     }
 
-    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
   </script>
 </body>
 </html>
