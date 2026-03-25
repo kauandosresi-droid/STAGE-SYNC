@@ -178,8 +178,7 @@
         setTimeout(() => setScanFlash(false), 200);
 
         // automático
-        setScanCode(code);
-        await processBarcodeScan();
+        await processBarcodeScan(code);
       }
 
       function normalizeCode(value) {
@@ -622,10 +621,10 @@
         return !error;
       }
 
-      async function processBarcodeScan() {
+      async function processBarcodeScan(codeOverride) {
         if (!activeOperatorEvent) return;
 
-        const normalized = normalizeCode(scanCode);
+        const normalized = normalizeCode(codeOverride || scanCode);
         if (!normalized) return;
 
         const foundItem = activeOperatorEvent.items.find(
