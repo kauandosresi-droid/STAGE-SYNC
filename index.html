@@ -3,22 +3,30 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>StageSync</title>
+  <title>Controle de estoque para eventos</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <script src="https://unpkg.com/html5-qrcode"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-<style>
-@keyframes scanMove {
-  0% { top: 0%; }
-  100% { top: 100%; }
-}
-.animate-scan {
-  animation: scanMove 2s linear infinite;
-}
-</style>
+  <style>
+    @keyframes scanMove {
+      0% { top: 0%; }
+      100% { top: 100%; }
+    }
+    .animate-scan {
+      animation: scanMove 2s linear infinite;
+    }
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(148, 163, 184, 0.35);
+      border-radius: 999px;
+    }
+  </style>
 </head>
 <body class="bg-slate-950">
   <div id="root"></div>
@@ -30,24 +38,27 @@
     const SUPABASE_ANON_KEY = "sb_publishable_l-xO9VFLWY5IA1D5pM56-w_dMqM41e9";
     const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    function Card({ children, className = "" }) {
-      return <div className={`rounded-3xl border border-white/10 bg-white/5 backdrop-blur ${className}`}>{children}</div>;
-    }
-
-    function CardContent({ children, className = "" }) {
-      return <div className={`p-4 ${className}`}>{children}</div>;
-    }
-
     function Button({ children, className = "", variant = "default", size = "default", ...props }) {
       const base = "inline-flex items-center justify-center rounded-2xl font-medium transition disabled:opacity-50 disabled:cursor-not-allowed";
-      const sizes = { default: "px-4 py-2 text-sm", sm: "px-3 py-2 text-xs" };
-      const variants = {
-        default: "bg-blue-600 hover:bg-blue-500 text-white",
-        outline: "border border-white/10 bg-white/5 text-white hover:bg-white/10",
-        secondary: "bg-emerald-600 hover:bg-emerald-500 text-white",
-        destructive: "bg-red-600 hover:bg-red-500 text-white"
+      const sizes = {
+        default: "px-4 py-2.5 text-sm",
+        sm: "px-3 py-2 text-xs",
       };
-      return <button {...props} className={`${base} ${sizes[size] || sizes.default} ${variants[variant] || variants.default} ${className}`}>{children}</button>;
+      const variants = {
+        default: "bg-white text-slate-950 hover:bg-slate-200",
+        outline: "border border-white/10 bg-transparent text-slate-200 hover:bg-white/5",
+        secondary: "bg-slate-800 text-white hover:bg-slate-700",
+        destructive: "bg-red-600 hover:bg-red-500 text-white",
+        ghost: "bg-transparent text-slate-300 hover:bg-white/5 hover:text-white",
+      };
+      return (
+        <button
+          {...props}
+          className={`${base} ${sizes[size] || sizes.default} ${variants[variant] || variants.default} ${className}`}
+        >
+          {children}
+        </button>
+      );
     }
 
     function Input(props) {
@@ -55,14 +66,85 @@
       return (
         <input
           {...props}
-          className={`w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white outline-none placeholder:text-slate-500 ${extra}`}
+          className={`w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-white outline-none placeholder:text-slate-500 focus:border-blue-400/40 ${extra}`}
         />
+      );
+    }
+
+    function Select({ className = "", children, ...props }) {
+      return (
+        <select
+          {...props}
+          className={`w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-white outline-none focus:border-blue-400/40 ${className}`}
+        >
+          {children}
+        </select>
+      );
+    }
+
+    function Panel({ title, subtitle, action, children, compact = false }) {
+      return (
+        <div className={`rounded-3xl border border-white/10 bg-white/5 backdrop-blur ${compact ? "p-3" : "p-4"}`}>
+          {(title || subtitle || action) && (
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                {title && <h2 className="text-lg font-semibold text-white">{title}</h2>}
+                {subtitle && <p className="mt-1 text-sm text-slate-400">{subtitle}</p>}
+              </div>
+              {action}
+            </div>
+          )}
+          {children}
+        </div>
+      );
+    }
+
+    function StatCard({ label, value, helper, tone = "blue" }) {
+      const toneMap = {
+        blue: "border-white/10 bg-white/[0.03]",
+        emerald: "border-white/10 bg-white/[0.03]",
+        amber: "border-white/10 bg-white/[0.03]",
+        rose: "border-white/10 bg-white/[0.03]",
+      };
+      return (
+        <div className={`rounded-2xl border p-4 ${toneMap[tone] || toneMap.blue}`}>
+          <p className="text-xs uppercase tracking-[0.18em] text-slate-400">{label}</p>
+          <p className="mt-2 text-2xl font-bold text-white">{value}</p>
+          {helper && <p className="mt-1 text-xs text-slate-400">{helper}</p>}
+        </div>
+      );
+    }
+
+    function EmptyState({ title, text }) {
+      return (
+        <div className="rounded-3xl border border-dashed border-white/10 bg-white/[0.03] px-4 py-8 text-center">
+          <p className="text-base font-semibold text-white">{title}</p>
+          <p className="mt-2 text-sm text-slate-400">{text}</p>
+        </div>
+      );
+    }
+
+    function Alert({ type = "info", message }) {
+      if (!message) return null;
+
+      const styles = {
+        info: "border-blue-400/20 bg-blue-500/10 text-blue-100",
+        success: "border-emerald-400/20 bg-emerald-500/10 text-emerald-100",
+        warning: "border-amber-400/20 bg-amber-500/10 text-amber-100",
+        error: "border-red-400/20 bg-red-500/10 text-red-100",
+      };
+
+      return (
+        <div className={`rounded-2xl border px-4 py-3 text-sm ${styles[type] || styles.info}`}>
+          {message}
+        </div>
       );
     }
 
     function App() {
       const [role, setRole] = useState(null);
-      const [tab, setTab] = useState("patrimonio");
+      const [adminPasswordInput, setAdminPasswordInput] = useState("");
+      const [tab, setTab] = useState("dashboard");
       const [eventsView, setEventsView] = useState("lista");
 
       const [items, setItems] = useState([]);
@@ -88,16 +170,143 @@
       const [operatorView, setOperatorView] = useState({ eventId: null, tab: "saida" });
       const [scanCode, setScanCode] = useState("");
       const [scanMessage, setScanMessage] = useState("");
+      const [scanMessageType, setScanMessageType] = useState("info");
       const [syncMessage, setSyncMessage] = useState("");
+      const [syncMessageType, setSyncMessageType] = useState("info");
       const statusSyncRef = useRef("");
       const scannerRef = useRef(null);
       const lastScanRef = useRef(0);
-      const [scanFlash, setScanFlash] = useState(false);
       const [operatorScannerOpen, setOperatorScannerOpen] = useState(false);
       const [lastScannedItem, setLastScannedItem] = useState(null);
       const [pendingScanCode, setPendingScanCode] = useState("");
       const [pendingItem, setPendingItem] = useState(null);
-      const [awaitingConfirm, setAwaitingConfirm] = useState(false);
+
+      const [itemSearch, setItemSearch] = useState("");
+      const [categoryFilter, setCategoryFilter] = useState("todos");
+      const [statusFilter, setStatusFilter] = useState("todos");
+      const [sortBy, setSortBy] = useState("recentes");
+      const [eventSearch, setEventSearch] = useState("");
+      const [eventStatusFilter, setEventStatusFilter] = useState("todos");
+      const [operators, setOperators] = useState([]);
+      const [operatorName, setOperatorName] = useState("");
+            const [operatorPassword, setOperatorPassword] = useState("");
+      const [editingOperatorId, setEditingOperatorId] = useState(null);
+      const [operatorLoginValue, setOperatorLoginValue] = useState("");
+      const [operatorPasswordValue, setOperatorPasswordValue] = useState("");
+      const [currentOperator, setCurrentOperator] = useState(null);
+
+      function setFeedback(message = "", type = "info") {
+        setScanMessage(message);
+        setScanMessageType(type);
+      }
+
+      function setSystemMessage(message = "", type = "info") {
+        setSyncMessage(message);
+        setSyncMessageType(type);
+      }
+
+      function normalizeCode(value) {
+        return String(value || "").trim();
+      }
+
+      function toArray(value) {
+        if (Array.isArray(value)) return value;
+        if (value == null || value === "") return [];
+        try {
+          return JSON.parse(value);
+        } catch {
+          return [];
+        }
+      }
+
+      function normalizeItem(item) {
+        return {
+          ...item,
+          status: item?.status || "disponivel",
+        };
+      }
+
+      function normalizeEvent(event) {
+        return {
+          ...event,
+          items: toArray(event.items),
+          saidaConfirmados: toArray(event.saidaConfirmados),
+          entradaConfirmados: toArray(event.entradaConfirmados),
+          saidaHistorico: toArray(event.saidaHistorico),
+          entradaHistorico: toArray(event.entradaHistorico),
+          saidaConcluida: !!event.saidaConcluida,
+          finalizado: !!event.finalizado,
+          saidaConcluidaEm: event.saidaConcluidaEm || "",
+          entradaConcluidaEm: event.entradaConcluidaEm || "",
+          location: event.location || "",
+          notes: event.notes || "",
+        };
+      }
+
+      function normalizeOperator(operator) {
+        return {
+          id: operator?.id || crypto.randomUUID(),
+          name: String(operator?.name || "").trim(),
+          login: String(operator?.login || "").trim(),
+          password: String(operator?.password || "").trim(),
+          active: operator?.active !== false,
+          created_at: operator?.created_at || "",
+        };
+      }
+
+      async function fetchOperators() {
+        const { data, error } = await supabase
+          .from("operators")
+          .select("*")
+          .order("created_at", { ascending: false });
+
+        if (error) {
+          setSystemMessage("Erro ao carregar operadores. Verifique se a tabela 'operators' existe no Supabase.", "error");
+          return;
+        }
+
+        setOperators((data || []).map(normalizeOperator));
+      }
+
+      function getItemStatusValue(item, currentEvents = events) {
+        if (item?.status === "manutencao") return "manutencao";
+
+        const activeEvent = currentEvents.find(
+          (event) => !event.finalizado && event.items.some((eventItem) => eventItem.id === item.id)
+        );
+
+        if (activeEvent) return "em_uso";
+        return "disponivel";
+      }
+
+      function getItemStatus(item) {
+        const status = getItemStatusValue(item);
+
+        if (status === "manutencao") {
+          return { label: "Em manutenção", badge: "text-yellow-200 bg-yellow-500/15 border border-yellow-400/20" };
+        }
+
+        if (status === "em_uso") {
+          const activeEvent = events.find(
+            (event) => !event.finalizado && event.items.some((eventItem) => eventItem.id === item.id)
+          );
+
+          return {
+            label: activeEvent?.saidaConcluida ? "Em evento" : "Reservado",
+            badge: activeEvent?.saidaConcluida
+              ? "text-purple-200 bg-purple-500/15 border border-purple-400/20"
+              : "text-blue-200 bg-blue-500/15 border border-blue-400/20",
+          };
+        }
+
+        return { label: "Disponível", badge: "text-emerald-200 bg-emerald-500/15 border border-emerald-400/20" };
+      }
+
+      function getEventStage(event) {
+        if (event.finalizado) return { label: "Finalizado", badge: "text-emerald-200 bg-emerald-500/15 border border-emerald-400/20" };
+        if (event.saidaConcluida) return { label: "Em andamento", badge: "text-blue-200 bg-blue-500/15 border border-blue-400/20" };
+        return { label: "Programado", badge: "text-amber-200 bg-amber-500/15 border border-amber-400/20" };
+      }
 
       async function stopBarcodeScanner() {
         try {
@@ -139,24 +348,20 @@
                 return;
               }
 
-              setScanFlash(true);
-              setTimeout(() => setScanFlash(false), 200);
-
               if (scannerTarget === "edit" && editingItem) {
-                setEditingItem((prev) => prev ? { ...prev, barcode: code } : prev);
+                setEditingItem((prev) => (prev ? { ...prev, barcode: code } : prev));
               } else {
                 setBarcode(code);
               }
 
               setScannerOpen(false);
-              await html5QrCode.stop();
-              await html5QrCode.clear();
-              scannerRef.current = null;
+              await stopBarcodeScanner();
             }
           );
         } catch {
           setScannerOpen(false);
           await stopBarcodeScanner();
+          setSystemMessage("Não foi possível iniciar o scanner da câmera.", "error");
         }
       }
 
@@ -168,67 +373,14 @@
         );
 
         if (!foundItem) {
-          setScanMessage("Item não pertence ao evento");
+          setFeedback("Item não pertence ao evento.", "error");
           return;
         }
 
+        setPendingScanCode(code);
+        setPendingItem(foundItem);
         setLastScannedItem(foundItem);
-
-        setScanFlash(true);
-        setTimeout(() => setScanFlash(false), 200);
-
-        // automático
-        await processBarcodeScan(code);
-      }
-
-      function normalizeCode(value) {
-        return String(value || "").trim();
-      }
-
-      function toArray(value) {
-        if (Array.isArray(value)) return value;
-        if (value == null || value === "") return [];
-        try { return JSON.parse(value); } catch { return []; }
-      }
-
-      function normalizeItem(item) {
-        return {
-          ...item,
-          status: item?.status || "disponivel",
-        };
-      }
-
-      function normalizeEvent(event) {
-        return {
-          ...event,
-          items: toArray(event.items),
-          saidaConfirmados: toArray(event.saidaConfirmados),
-          entradaConfirmados: toArray(event.entradaConfirmados),
-          saidaHistorico: toArray(event.saidaHistorico),
-          entradaHistorico: toArray(event.entradaHistorico),
-          saidaConcluida: !!event.saidaConcluida,
-          finalizado: !!event.finalizado,
-          saidaConcluidaEm: event.saidaConcluidaEm || "",
-          entradaConcluidaEm: event.entradaConcluidaEm || "",
-          location: event.location || "",
-          notes: event.notes || "",
-        };
-      }
-
-      function getItemStatusValue(item, currentEvents = events) {
-        if (item?.status === "manutencao") {
-          return "manutencao";
-        }
-
-        const activeEvent = currentEvents.find(
-          (event) => !event.finalizado && event.items.some((eventItem) => eventItem.id === item.id)
-        );
-
-        if (activeEvent) {
-          return "em_uso";
-        }
-
-        return "disponivel";
+        setFeedback("Item identificado. Confirme a leitura para continuar.", "success");
       }
 
       async function syncItemStatuses(currentItems = items, currentEvents = events) {
@@ -242,10 +394,7 @@
           status: getItemStatusValue(item, currentEvents),
         }));
 
-        const snapshot = JSON.stringify(
-          itemsWithStatus.map((item) => ({ id: item.id, status: item.status }))
-        );
-
+        const snapshot = JSON.stringify(itemsWithStatus.map((item) => ({ id: item.id, status: item.status })));
         if (snapshot === statusSyncRef.current) return;
 
         const changedItems = itemsWithStatus.filter((item) => {
@@ -267,46 +416,52 @@
 
         const results = await Promise.all(
           changedItems.map((item) =>
-            supabase
-              .from("items")
-              .update({ status: item.status })
-              .eq("id", item.id)
+            supabase.from("items").update({ status: item.status }).eq("id", item.id)
           )
         );
 
         const failed = results.find((result) => result.error);
-
         if (failed?.error) {
-          setSyncMessage(`Erro ao salvar status: ${failed.error.message}`);
+          setSystemMessage(`Erro ao salvar status: ${failed.error.message}`, "error");
           return;
         }
 
         statusSyncRef.current = snapshot;
-        setSyncMessage("");
+        setSystemMessage("", "info");
       }
 
       async function fetchAll(showLoading = true) {
         if (showLoading) setLoading(true);
 
-        const [{ data: itemsData, error: itemsError }, { data: eventsData, error: eventsError }] =
-          await Promise.all([
-            supabase.from("items").select("*").order("id", { ascending: false }),
-            supabase.from("events").select("*").order("id", { ascending: false }),
-          ]);
+        const [
+          { data: itemsData, error: itemsError },
+          { data: eventsData, error: eventsError },
+          { data: operatorsData, error: operatorsError },
+        ] = await Promise.all([
+          supabase.from("items").select("*").order("id", { ascending: false }),
+          supabase.from("events").select("*").order("id", { ascending: false }),
+          supabase.from("operators").select("*").order("created_at", { ascending: false }),
+        ]);
 
         if (itemsError) {
-          setSyncMessage("Erro ao carregar itens.");
+          setSystemMessage("Erro ao carregar itens.", "error");
         } else {
           setItems((itemsData || []).map(normalizeItem));
         }
 
         if (eventsError) {
-          setSyncMessage("Erro ao carregar eventos.");
+          setSystemMessage("Erro ao carregar eventos.", "error");
         } else {
           setEvents((eventsData || []).map(normalizeEvent));
         }
 
-        if (!itemsError && !eventsError) setSyncMessage("");
+        if (operatorsError) {
+          setSystemMessage("Erro ao carregar operadores. Verifique se a tabela 'operators' existe no Supabase.", "error");
+        } else {
+          setOperators((operatorsData || []).map(normalizeOperator));
+        }
+
+        if (!itemsError && !eventsError && !operatorsError) setSystemMessage("", "info");
         if (showLoading) setLoading(false);
       }
 
@@ -332,20 +487,86 @@
         }, 150);
 
         return () => clearTimeout(timeout);
-      }, [scannerOpen, scannerTarget, editingItem]);
+      }, [scannerOpen, scannerTarget, editingItem, operatorScannerOpen]);
+
+      const dashboardStats = useMemo(() => {
+        const disponiveis = items.filter((item) => getItemStatusValue(item) === "disponivel").length;
+        const emUso = items.filter((item) => getItemStatusValue(item) === "em_uso").length;
+        const manutencao = items.filter((item) => getItemStatusValue(item) === "manutencao").length;
+        const eventosAbertos = events.filter((event) => !event.finalizado).length;
+        return { disponiveis, emUso, manutencao, eventosAbertos };
+      }, [items, events]);
+
+      const filteredItems = useMemo(() => {
+        let result = [...items];
+
+        if (itemSearch.trim()) {
+          const query = itemSearch.toLowerCase();
+          result = result.filter((item) =>
+            String(item.name || "").toLowerCase().includes(query) ||
+            String(item.category || "").toLowerCase().includes(query) ||
+            String(item.barcode || "").toLowerCase().includes(query)
+          );
+        }
+
+        if (categoryFilter !== "todos") result = result.filter((item) => item.category === categoryFilter);
+        if (statusFilter !== "todos") result = result.filter((item) => getItemStatusValue(item) === statusFilter);
+
+        if (sortBy === "nome") {
+          result.sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "pt-BR"));
+        } else if (sortBy === "quantidade") {
+          result.sort((a, b) => Number(b.quantity || 0) - Number(a.quantity || 0));
+        } else {
+          result.sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
+        }
+
+        return result;
+      }, [items, itemSearch, categoryFilter, statusFilter, sortBy, events]);
+
+      const filteredEvents = useMemo(() => {
+        let result = [...events];
+
+        if (eventSearch.trim()) {
+          const query = eventSearch.toLowerCase();
+          result = result.filter((event) =>
+            String(event.name || "").toLowerCase().includes(query) ||
+            String(event.location || "").toLowerCase().includes(query) ||
+            String(event.notes || "").toLowerCase().includes(query)
+          );
+        }
+
+        if (eventStatusFilter !== "todos") {
+          if (eventStatusFilter === "programado") result = result.filter((event) => !event.saidaConcluida && !event.finalizado);
+          if (eventStatusFilter === "andamento") result = result.filter((event) => event.saidaConcluida && !event.finalizado);
+          if (eventStatusFilter === "finalizado") result = result.filter((event) => event.finalizado);
+        }
+
+        return result;
+      }, [events, eventSearch, eventStatusFilter]);
+
+      const activeOperatorEvent = useMemo(
+        () => events.find((event) => event.id === operatorView.eventId) || null,
+        [events, operatorView.eventId]
+      );
 
       function selectRole(nextRole) {
         setRole(nextRole);
         setScanCode("");
-        setScanMessage("");
+        setFeedback("");
+        setPendingItem(null);
+        setPendingScanCode("");
+
+        if (nextRole !== "operador") {
+          setOperatorLoginValue("");
+          setOperatorPasswordValue("");
+          setCurrentOperator(null);
+        }
 
         if (nextRole === "operador") {
           setTab("eventos");
           setEventsView("lista");
-        }
-
-        if (nextRole === "admin") {
-          setTab("patrimonio");
+        } else {
+          setTab("dashboard");
           setEventsView("lista");
         }
       }
@@ -353,10 +574,11 @@
       function switchUser() {
         stopBarcodeScanner();
         setRole(null);
-        setTab("patrimonio");
+        setTab("dashboard");
         setEventsView("lista");
         setEditingItem(null);
         setEditingEvent(null);
+        setEditingOperatorId(null);
         setEventName("");
         setEventDate("");
         setEventLocation("");
@@ -364,8 +586,16 @@
         setSelectedItems([]);
         setOperatorView({ eventId: null, tab: "saida" });
         setScanCode("");
-        setScanMessage("");
+        setFeedback("");
         setScannerOpen(false);
+        setOperatorScannerOpen(false);
+        setPendingItem(null);
+        setPendingScanCode("");
+        setOperatorName("");
+                setOperatorPassword("");
+        setOperatorLoginValue("");
+        setOperatorPasswordValue("");
+        setCurrentOperator(null);
       }
 
       function resetEventForm() {
@@ -385,18 +615,21 @@
         setEventNotes(event.notes || "");
         setSelectedItems(event.items || []);
         setEventsView("novo");
-        setScanMessage("");
+        setFeedback("");
       }
 
       async function addItem() {
-        if (!name || !category || !quantity || !barcode) return;
+        if (!name || !category || !quantity || !barcode) {
+          setFeedback("Preencha todos os campos do item.", "warning");
+          return;
+        }
 
         const normalizedName = String(name).trim();
         const normalizedBarcode = normalizeCode(barcode);
         const barcodeExists = items.some((item) => normalizeCode(item.barcode) === normalizedBarcode);
 
         if (barcodeExists) {
-          setScanMessage("Já existe um item com este código de barras.");
+          setFeedback("Já existe um item com este código de barras.", "error");
           return;
         }
 
@@ -409,18 +642,17 @@
         };
 
         const { data, error } = await supabase.from("items").insert([newItem]).select().single();
-
         if (error) {
-          setScanMessage("Erro ao cadastrar item.");
+          setFeedback("Erro ao cadastrar item.", "error");
           return;
         }
 
-        setItems((prev) => [data || { ...newItem, id: crypto.randomUUID() }, ...prev]);
+        setItems((prev) => [normalizeItem(data || { ...newItem, id: crypto.randomUUID() }), ...prev]);
         setName("");
         setCategory("som");
         setQuantity("1");
         setBarcode("");
-        setScanMessage("");
+        setFeedback("Item cadastrado com sucesso.", "success");
       }
 
       async function updateItem() {
@@ -432,7 +664,7 @@
         );
 
         if (barcodeExists) {
-          setScanMessage("Já existe um item com este código de barras.");
+          setFeedback("Já existe um item com este código de barras.", "error");
           return;
         }
 
@@ -456,26 +688,25 @@
           .eq("id", updatedItem.id);
 
         if (error) {
-          setScanMessage("Erro ao atualizar item.");
+          setFeedback("Erro ao atualizar item.", "error");
           return;
         }
 
-        setItems(items.map((item) => (item.id === editingItem.id ? updatedItem : item)));
+        setItems((prev) => prev.map((item) => (item.id === editingItem.id ? updatedItem : item)));
         setEditingItem(null);
-        setScanMessage("");
+        setFeedback("Item atualizado com sucesso.", "success");
         setScannerOpen(false);
       }
 
       async function deleteItem(id) {
         const { error } = await supabase.from("items").delete().eq("id", id);
-
         if (error) {
-          setScanMessage("Erro ao excluir item.");
+          setFeedback("Erro ao excluir item.", "error");
           return;
         }
 
-        setItems(items.filter((item) => item.id !== id));
-        setSelectedItems(selectedItems.filter((item) => item.id !== id));
+        setItems((prev) => prev.filter((item) => item.id !== id));
+        setSelectedItems((prev) => prev.filter((item) => item.id !== id));
 
         const updatedEvents = events.map((event) => ({
           ...event,
@@ -504,6 +735,8 @@
               .eq("id", event.id)
           )
         );
+
+        setFeedback("Item excluído com sucesso.", "success");
       }
 
       function isItemAvailable(item) {
@@ -514,19 +747,126 @@
         const exists = selectedItems.find((i) => i.id === item.id);
 
         if (!exists && !isItemAvailable(item)) {
-          setScanMessage("Item indisponível (em uso ou manutenção).");
+          setFeedback("Item indisponível para seleção.", "warning");
           return;
         }
 
-        if (exists) {
-          setSelectedItems(selectedItems.filter((i) => i.id !== item.id));
-        } else {
-          setSelectedItems([...selectedItems, item]);
+        if (exists) setSelectedItems((prev) => prev.filter((i) => i.id !== item.id));
+        else setSelectedItems((prev) => [...prev, item]);
+      }
+
+      function resetOperatorForm() {
+        setEditingOperatorId(null);
+        setOperatorName("");
+        setOperatorPassword("");
+      }
+
+      function startEditOperator(operator) {
+        setEditingOperatorId(operator.id);
+        setOperatorName(operator.name);
+        setOperatorPassword(operator.password);
+        setTab("operadores");
+        setFeedback("");
+      }
+
+      async function saveOperator() {
+        if (!operatorName.trim() || !operatorPassword.trim()) {
+          setFeedback("Preencha nome e senha do operador.", "warning");
+          return;
         }
+
+        const normalizedLogin = operatorName.trim().toLowerCase().split(" ").join("");
+        const loginAlreadyUsed = operators.some((operator) => operator.id !== editingOperatorId && operator.login.toLowerCase() === normalizedLogin);
+
+        if (loginAlreadyUsed) {
+          setFeedback("Esse login já está sendo usado por outro operador.", "error");
+          return;
+        }
+
+        const payload = {
+          name: operatorName.trim(),
+          login: normalizedLogin,
+          password: operatorPassword,
+          active: true,
+        };
+
+        if (editingOperatorId) {
+          const { data, error } = await supabase
+            .from("operators")
+            .update(payload)
+            .eq("id", editingOperatorId)
+            .select()
+            .single();
+
+          if (error) {
+            setFeedback("Erro ao atualizar operador no Supabase.", "error");
+            return;
+          }
+
+          setOperators((prev) => prev.map((operator) => operator.id === editingOperatorId ? normalizeOperator(data) : operator));
+          setFeedback("Operador atualizado com sucesso.", "success");
+        } else {
+          const { data, error } = await supabase
+            .from("operators")
+            .insert([payload])
+            .select()
+            .single();
+
+          if (error) {
+            setFeedback("Erro ao cadastrar operador no Supabase.", "error");
+            return;
+          }
+
+          setOperators((prev) => [normalizeOperator(data), ...prev]);
+          setFeedback("Operador cadastrado com sucesso.", "success");
+        }
+
+        resetOperatorForm();
+      }
+
+      async function deleteOperator(operatorId) {
+        const { error } = await supabase.from("operators").delete().eq("id", operatorId);
+
+        if (error) {
+          setFeedback("Erro ao remover operador do Supabase.", "error");
+          return;
+        }
+
+        setOperators((prev) => prev.filter((operator) => operator.id !== operatorId));
+        if (currentOperator?.id === operatorId) {
+          switchUser();
+          return;
+        }
+        if (editingOperatorId === operatorId) resetOperatorForm();
+        setFeedback("Operador removido com sucesso.", "success");
+      }
+
+      function loginOperator() {
+        const login = operatorLoginValue.trim().toLowerCase();
+        const password = operatorPasswordValue;
+
+        if (!login || !password) {
+          setFeedback("Informe login e senha para acessar como operador.", "warning");
+          return;
+        }
+
+        const foundOperator = operators.find((operator) => operator.active && operator.login.toLowerCase() === login && operator.password === password);
+
+        if (!foundOperator) {
+          setFeedback("Login ou senha do operador inválidos.", "error");
+          return;
+        }
+
+        setCurrentOperator(foundOperator);
+        selectRole("operador");
+        setFeedback(`Acesso liberado para ${foundOperator.name}.`, "success");
       }
 
       async function addEvent() {
-        if (!eventName || !eventDate) return;
+        if (!eventName || !eventDate) {
+          setFeedback("Informe nome e data do evento.", "warning");
+          return;
+        }
 
         const newEvent = {
           name: eventName,
@@ -545,20 +885,22 @@
         };
 
         const { data, error } = await supabase.from("events").insert([newEvent]).select().single();
-
         if (error) {
-          setScanMessage("Erro ao cadastrar evento.");
+          setFeedback("Erro ao cadastrar evento.", "error");
           return;
         }
 
-        setEvents([normalizeEvent(data || { ...newEvent, id: Date.now() }), ...events]);
+        setEvents((prev) => [normalizeEvent(data || { ...newEvent, id: Date.now() }), ...prev]);
         resetEventForm();
         setEventsView("lista");
-        setScanMessage("");
+        setFeedback("Evento cadastrado com sucesso.", "success");
       }
 
       async function updateEvent() {
-        if (!editingEvent || !eventName || !eventDate) return;
+        if (!editingEvent || !eventName || !eventDate) {
+          setFeedback("Informe nome e data do evento.", "warning");
+          return;
+        }
 
         const updatedEvent = {
           ...editingEvent,
@@ -581,21 +923,20 @@
           .eq("id", editingEvent.id);
 
         if (error) {
-          setScanMessage("Erro ao atualizar evento.");
+          setFeedback("Erro ao atualizar evento.", "error");
           return;
         }
 
         setEvents((prev) => prev.map((event) => event.id === editingEvent.id ? normalizeEvent(updatedEvent) : event));
         resetEventForm();
         setEventsView("lista");
-        setScanMessage("");
+        setFeedback("Evento atualizado com sucesso.", "success");
       }
 
       async function deleteEvent(eventId) {
         const { error } = await supabase.from("events").delete().eq("id", eventId);
-
         if (error) {
-          setScanMessage("Erro ao excluir evento.");
+          setFeedback("Erro ao excluir evento.", "error");
           return;
         }
 
@@ -609,12 +950,9 @@
         if (operatorView.eventId === eventId) {
           setOperatorView({ eventId: null, tab: "saida" });
         }
-      }
 
-      const activeOperatorEvent = useMemo(
-        () => events.find((event) => event.id === operatorView.eventId) || null,
-        [events, operatorView.eventId]
-      );
+        setFeedback("Evento excluído com sucesso.", "success");
+      }
 
       async function saveEventUpdate(eventId, patch) {
         const { error } = await supabase.from("events").update(patch).eq("id", eventId);
@@ -625,14 +963,17 @@
         if (!activeOperatorEvent) return;
 
         const normalized = normalizeCode(codeOverride || scanCode);
-        if (!normalized) return;
+        if (!normalized) {
+          setFeedback("Informe ou leia um código de barras.", "warning");
+          return;
+        }
 
         const foundItem = activeOperatorEvent.items.find(
           (item) => normalizeCode(item.barcode) === normalized
         );
 
         if (!foundItem) {
-          setScanMessage("Código não pertence a este evento.");
+          setFeedback("Código não pertence a este evento.", "error");
           return;
         }
 
@@ -641,7 +982,7 @@
         if (operatorView.tab === "saida") {
           const alreadyDone = activeOperatorEvent.saidaConfirmados.includes(normalized);
           if (alreadyDone) {
-            setScanMessage(`Saída já confirmada para: ${foundItem.name}`);
+            setFeedback(`Saída já confirmada para: ${foundItem.name}`, "warning");
           } else {
             const updatedEvents = events.map((event) =>
               event.id === activeOperatorEvent.id
@@ -650,12 +991,7 @@
                     saidaConfirmados: [...event.saidaConfirmados, normalized],
                     saidaHistorico: [
                       ...event.saidaHistorico,
-                      {
-                        id: Date.now(),
-                        itemName: foundItem.name,
-                        barcode: foundItem.barcode,
-                        time: agora,
-                      },
+                      { id: Date.now(), itemName: foundItem.name, barcode: foundItem.barcode, time: agora },
                     ],
                   }
                 : event
@@ -670,17 +1006,18 @@
             });
 
             if (!ok) {
-              setScanMessage("Erro ao salvar saída.");
+              setFeedback("Erro ao salvar saída.", "error");
               return;
             }
-            setScanMessage(`Saída confirmada: ${foundItem.name}`);
+
+            setFeedback(`Saída confirmada: ${foundItem.name}`, "success");
           }
         }
 
         if (operatorView.tab === "entrada") {
           const alreadyDone = activeOperatorEvent.entradaConfirmados.includes(normalized);
           if (alreadyDone) {
-            setScanMessage(`Entrada já confirmada para: ${foundItem.name}`);
+            setFeedback(`Entrada já confirmada para: ${foundItem.name}`, "warning");
           } else {
             const updatedEvents = events.map((event) =>
               event.id === activeOperatorEvent.id
@@ -689,12 +1026,7 @@
                     entradaConfirmados: [...event.entradaConfirmados, normalized],
                     entradaHistorico: [
                       ...event.entradaHistorico,
-                      {
-                        id: Date.now(),
-                        itemName: foundItem.name,
-                        barcode: foundItem.barcode,
-                        time: agora,
-                      },
+                      { id: Date.now(), itemName: foundItem.name, barcode: foundItem.barcode, time: agora },
                     ],
                   }
                 : event
@@ -707,11 +1039,7 @@
             if (totalItens > 0 && totalEntrada === totalItens) {
               const finalEvents = updatedEvents.map((event) =>
                 event.id === activeOperatorEvent.id
-                  ? {
-                      ...event,
-                      finalizado: true,
-                      entradaConcluidaEm: agora,
-                    }
+                  ? { ...event, finalizado: true, entradaConcluidaEm: agora }
                   : event
               );
 
@@ -724,26 +1052,26 @@
               });
 
               if (!ok) {
-                setScanMessage("Erro ao finalizar entrada.");
+                setFeedback("Erro ao finalizar entrada.", "error");
                 return;
               }
 
               setEvents(finalEvents);
               setOperatorView({ eventId: null, tab: "saida" });
-              setScanMessage("Evento finalizado! ✅");
+              setFeedback("Evento finalizado com sucesso.", "success");
             } else {
               setEvents(updatedEvents);
-
               const ok = await saveEventUpdate(updatedEvent.id, {
                 entradaConfirmados: updatedEvent.entradaConfirmados,
                 entradaHistorico: updatedEvent.entradaHistorico,
               });
 
               if (!ok) {
-                setScanMessage("Erro ao salvar entrada.");
+                setFeedback("Erro ao salvar entrada.", "error");
                 return;
               }
-              setScanMessage(`Entrada confirmada: ${foundItem.name}`);
+
+              setFeedback(`Entrada confirmada: ${foundItem.name}`, "success");
             }
           }
         }
@@ -752,39 +1080,8 @@
       }
 
       function isConfirmed(event, item, currentTab) {
-        if (currentTab === "saida") {
-          return event.saidaConfirmados.includes(item.barcode);
-        }
+        if (currentTab === "saida") return event.saidaConfirmados.includes(item.barcode);
         return event.entradaConfirmados.includes(item.barcode);
-      }
-
-      function getItemStatus(item) {
-        const status = getItemStatusValue(item);
-
-        if (status === "manutencao") {
-          return {
-            label: "Em manutenção",
-            badge: "text-yellow-700 bg-yellow-100",
-          };
-        }
-
-        if (status === "em_uso") {
-          const activeEvent = events.find(
-            (event) => !event.finalizado && event.items.some((eventItem) => eventItem.id === item.id)
-          );
-
-          return {
-            label: "Em uso",
-            badge: activeEvent?.saidaConcluida
-              ? "text-purple-700 bg-purple-100"
-              : "text-blue-700 bg-blue-100",
-          };
-        }
-
-        return {
-          label: "Disponível",
-          badge: "text-green-700 bg-green-100",
-        };
       }
 
       async function toggleMaintenance(itemId) {
@@ -796,94 +1093,140 @@
         );
 
         if (activeEventUsingItem) {
-          setScanMessage("Não é possível colocar em manutenção um item que está em uso.");
+          setFeedback("Não é possível colocar em manutenção um item que está em uso.", "warning");
           return;
         }
 
         const nextStatus = targetItem.status === "manutencao" ? "disponivel" : "manutencao";
-
-        const { error } = await supabase
-          .from("items")
-          .update({ status: nextStatus })
-          .eq("id", itemId);
+        const { error } = await supabase.from("items").update({ status: nextStatus }).eq("id", itemId);
 
         if (error) {
-          setSyncMessage(`Erro ao salvar status: ${error.message}`);
+          setSystemMessage(`Erro ao salvar status: ${error.message}`, "error");
           return;
         }
 
-        setItems((prev) =>
-          prev.map((item) =>
-            item.id === itemId ? { ...item, status: nextStatus } : item
-          )
-        );
-        setScanMessage("");
+        setItems((prev) => prev.map((item) => (item.id === itemId ? { ...item, status: nextStatus } : item)));
+        setFeedback(nextStatus === "manutencao" ? "Item enviado para manutenção." : "Item liberado para uso.", "success");
       }
 
       if (loading) {
         return (
-          <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 text-white flex items-center justify-center p-4">
+          <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center p-4">
             <div className="rounded-2xl border border-white/10 bg-white/5 px-5 py-4 text-sm text-slate-300">
-              Carregando dados...
+              Carregando dados do sistema...
             </div>
           </div>
         );
       }
 
-      if (!role) {
+      if (!role || role === "operator_login" || role === "admin_login") {
         return (
           <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 text-white flex items-center justify-center p-4">
-            <div className="w-full max-w-md">
+            <div className="w-full max-w-lg">
               <div className="mb-6 text-center">
                 <div className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/10 px-4 py-2 backdrop-blur">
-                  <span className="text-sm font-medium tracking-[0.2em] uppercase text-blue-200">StageSync</span>
+                  <span className="text-sm font-medium tracking-[0.2em] uppercase text-blue-200">StageSync Pro</span>
                 </div>
-                <h1 className="mt-4 text-4xl font-bold tracking-tight">Controle de patrimônio para eventos</h1>
+                <h1 className="mt-4 text-4xl font-bold tracking-tight">Controle de estoque para eventos</h1>
                 <p className="mt-3 text-sm leading-6 text-slate-300">
-                  Gerencie equipamentos, controle entradas e saídas e acompanhe tudo em tempo real com praticidade.
+                  Cadastre equipamentos, gerencie eventos, acompanhe movimentações e confirme leituras com mais segurança.
                 </p>
               </div>
 
               <div className="grid gap-4">
-                <button
-                  type="button"
-                  onClick={() => selectRole("admin")}
-                  className="group rounded-3xl border border-blue-400/20 bg-gradient-to-r from-blue-600 to-cyan-500 p-[1px] text-left shadow-2xl shadow-blue-950/40 transition hover:scale-[1.01]"
-                >
-                  <div className="rounded-3xl bg-slate-950/90 p-5">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <p className="text-lg font-semibold text-white">Acessar como Administrador</p>
-                        <p className="mt-1 text-sm text-slate-300">
-                          Gerencie equipamentos, crie eventos e acompanhe toda a operação.
-                        </p>
-                      </div>
-                      <div className="rounded-2xl bg-blue-500/15 px-3 py-2 text-xs font-semibold text-blue-200">
-                        ADMIN
-                      </div>
-                    </div>
-                  </div>
-                </button>
+                {role !== "operator_login" && role !== "admin_login" && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRole("admin_login");
+                      setFeedback("");
+                      setAdminPasswordInput("");
+                    }}
+                    className="mt-2 inline-flex items-center justify-center rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-slate-300 hover:bg-white/10 hover:text-white transition"
+                  >
+                    Acesso administrador
+                  </button>
+                )}
 
-                <button
-                  type="button"
-                  onClick={() => selectRole("operador")}
-                  className="group rounded-3xl border border-emerald-400/20 bg-gradient-to-r from-emerald-500 to-teal-500 p-[1px] text-left shadow-2xl shadow-emerald-950/30 transition hover:scale-[1.01]"
-                >
-                  <div className="rounded-3xl bg-slate-950/90 p-5">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <p className="text-lg font-semibold text-white">Acessar como Operador</p>
-                        <p className="mt-1 text-sm text-slate-300">
-                          Realize a leitura dos itens e controle a saída e devolução com agilidade.
-                        </p>
+                {role === "admin_login" && (
+                  <div className="rounded-3xl border border-blue-400/20 bg-gradient-to-r from-blue-600/20 to-cyan-500/10 p-[1px] shadow-2xl shadow-blue-950/20">
+                    <div className="rounded-3xl bg-slate-950/95 p-5">
+                      <div className="mb-4 flex items-start justify-between gap-4">
+                        <div>
+                          <p className="text-lg font-semibold text-white">Login do administrador</p>
+                          <p className="mt-1 text-sm text-slate-400">Digite a senha para acessar o painel administrativo.</p>
+                        </div>
+                        <div className="rounded-2xl bg-blue-500/15 px-3 py-2 text-xs font-semibold text-blue-200">ADMIN</div>
                       </div>
-                      <div className="rounded-2xl bg-emerald-500/15 px-3 py-2 text-xs font-semibold text-emerald-200">
-                        OPERAÇÃO
+
+                      <div className="space-y-3">
+                        <Input
+                          type="password"
+                          placeholder="Senha do administrador"
+                          value={adminPasswordInput}
+                          onChange={(e) => setAdminPasswordInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              if (adminPasswordInput === "0000") {
+                                setAdminPasswordInput("");
+                                selectRole("admin");
+                              } else {
+                                setFeedback("Senha incorreta.", "error");
+                              }
+                            }
+                          }}
+                        />
+                        <Button
+                          onClick={() => {
+                            if (adminPasswordInput === "0000") {
+                              setAdminPasswordInput("");
+                              selectRole("admin");
+                            } else {
+                              setFeedback("Senha incorreta.", "error");
+                            }
+                          }}
+                          className="w-full"
+                        >
+                          Entrar
+                        </Button>
                       </div>
                     </div>
                   </div>
-                </button>
+                )}
+
+                <div className="rounded-3xl border border-emerald-400/20 bg-gradient-to-r from-emerald-500/20 to-teal-500/10 p-[1px] shadow-2xl shadow-emerald-950/20">
+                  <div className="rounded-3xl bg-slate-950/95 p-5">
+                    <div className="mb-4 flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-lg font-semibold text-white">Login do operador</p>
+                        <p className="mt-1 text-sm text-slate-400">Entre com o usuário e a senha cadastrados pelo administrador.</p>
+                      </div>
+                      <div className="rounded-2xl bg-emerald-500/15 px-3 py-2 text-xs font-semibold text-emerald-200">OPERAÇÃO</div>
+                    </div>
+
+                    <div className="space-y-3">
+                      <Input
+                        placeholder="Login do operador"
+                        value={operatorLoginValue}
+                        onChange={(e) => setOperatorLoginValue(e.target.value)}
+                        autoCapitalize="none"
+                        autoCorrect="off"
+                      />
+                      <Input
+                        type="password"
+                        placeholder="Senha"
+                        value={operatorPasswordValue}
+                        onChange={(e) => setOperatorPasswordValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") loginOperator();
+                        }}
+                      />
+                      <div className="grid grid-cols-1 gap-3">
+                        <Button onClick={loginOperator}>Entrar</Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -891,237 +1234,252 @@
       }
 
       return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 text-white p-4">
+        <div className="min-h-screen bg-slate-950 text-white p-4">
           {(scannerOpen || operatorScannerOpen) && (
             <div className="fixed inset-0 z-50 bg-black/80 p-4 flex items-center justify-center">
               <div className="w-full max-w-md rounded-3xl border border-white/10 bg-slate-950 p-4 shadow-2xl">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-white font-semibold">Scanner ativo</h3>
+                <div className="mb-3 flex items-center justify-between">
+                  <h3 className="font-semibold text-white">Scanner ativo</h3>
                   <Button onClick={async () => {
                     setScannerOpen(false);
                     setOperatorScannerOpen(false);
+                    setPendingItem(null);
+                    setPendingScanCode("");
                     await stopBarcodeScanner();
                   }}>Fechar</Button>
                 </div>
 
                 <div className="relative">
-                  <div id="reader" className="min-h-[300px] bg-black rounded-2xl" />
-
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div className="w-[220px] h-[220px] border-2 border-green-400 rounded-xl relative overflow-hidden">
-                      <div className="absolute left-0 right-0 h-[2px] bg-green-400 animate-scan" />
+                  <div id="reader" className="min-h-[300px] rounded-2xl bg-black" />
+                  <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                    <div className="relative h-[220px] w-[220px] overflow-hidden rounded-xl border-2 border-green-400">
+                      <div className="animate-scan absolute left-0 right-0 h-[2px] bg-green-400" />
                     </div>
                   </div>
                 </div>
 
                 {pendingItem && (
-                  <div className="mt-3 p-3 rounded-xl bg-green-500/10 border border-green-400/20 text-sm space-y-2">
-                    <p className="text-green-300 font-medium">Detectado:</p>
+                  <div className="mt-3 space-y-2 rounded-xl border border-green-400/20 bg-green-500/10 p-3 text-sm">
+                    <p className="font-medium text-green-300">Detectado:</p>
                     <p className="text-white">{pendingItem.name}</p>
-
                     <div className="flex gap-2">
-                      <Button
-                        className="w-full"
-                        onClick={async () => {
-                          await processBarcodeScan(pendingScanCode);
-                          setLastScannedItem(pendingItem);
-                          setPendingItem(null);
-                          setPendingScanCode("");
-                          setAwaitingConfirm(false);
-                        }}
-                      >
-                        Confirmar leitura
-                      </Button>
-
-                      <Button
-                        variant="outline"
-                        className="w-full"
-                        onClick={() => {
-                          setPendingItem(null);
-                          setPendingScanCode("");
-                          setAwaitingConfirm(false);
-                        }}
-                      >
-                        Ignorar
-                      </Button>
+                      <Button className="w-full" onClick={async () => {
+                        await processBarcodeScan(pendingScanCode);
+                        setLastScannedItem(pendingItem);
+                        setPendingItem(null);
+                        setPendingScanCode("");
+                      }}>Confirmar leitura</Button>
+                      <Button variant="outline" className="w-full" onClick={() => {
+                        setPendingItem(null);
+                        setPendingScanCode("");
+                        setFeedback("Leitura ignorada.", "warning");
+                      }}>Ignorar</Button>
                     </div>
                   </div>
                 )}
 
                 {!pendingItem && lastScannedItem && (
-                  <div className="mt-3 p-3 rounded-xl bg-green-500/10 border border-green-400/20 text-sm">
-                    <p className="text-green-300 font-medium">Lido:</p>
+                  <div className="mt-3 rounded-xl border border-blue-400/20 bg-blue-500/10 p-3 text-sm">
+                    <p className="font-medium text-blue-200">Último item lido:</p>
                     <p className="text-white">{lastScannedItem.name}</p>
                   </div>
                 )}
               </div>
             </div>
           )}
-          <div className="mx-auto max-w-md">
-            <div className="mb-4 rounded-3xl border border-white/10 bg-white/5 p-4 backdrop-blur">
-              <div className="flex items-center justify-between gap-3">
+
+          <div className="mx-auto max-w-6xl">
+            <div className="mb-6 rounded-3xl border border-white/10 bg-white/[0.03] p-5">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.22em] text-blue-200">StageSync</p>
-                  <h1 className="mt-1 text-2xl font-bold tracking-tight">{role === "admin" ? "Painel administrativo" : "Painel do operador"}</h1>
+                  <p className="text-xs uppercase tracking-[0.22em] text-slate-500">{role === "operador" && currentOperator ? currentOperator.name : "StageSync Pro"}</p>
+                  <h1 className="mt-2 text-3xl font-semibold tracking-tight">{role === "admin" ? "Painel administrativo" : "Painel operacional"}</h1>
+                  <p className="mt-2 text-sm text-slate-400">
+                    {role === "admin" ? "Controle de estoque, eventos e cadastros em uma interface mais limpa." : "Operação de saída e retorno com conferência de itens."}
+                  </p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <div className="rounded-2xl border border-white/10 bg-white/10 px-3 py-2 text-xs font-medium text-slate-200">
-                    {role}
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={switchUser}
-                    className="rounded-2xl"
-                  >
-                    Trocar usuário
-                  </Button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="rounded-2xl border border-white/10 bg-transparent px-3 py-2 text-xs font-medium text-slate-300">Perfil: {role}</div>
+                  <Button type="button" variant="outline" size="sm" onClick={switchUser} className="rounded-2xl">Trocar usuário</Button>
                 </div>
               </div>
+
+              {role === "admin" && (
+                <div className="mt-5 flex flex-wrap gap-2">
+                  <button type="button" onClick={() => setTab("dashboard")} className={`rounded-2xl px-4 py-2.5 text-sm transition ${tab === "dashboard" ? "bg-white text-slate-950" : "border border-white/10 bg-transparent text-slate-300 hover:bg-white/5"}`}>
+                    Visão geral
+                  </button>
+                  <button type="button" onClick={() => setTab("patrimonio")} className={`rounded-2xl px-4 py-2.5 text-sm transition ${tab === "patrimonio" ? "bg-white text-slate-950" : "border border-white/10 bg-transparent text-slate-300 hover:bg-white/5"}`}>
+                    Estoque
+                  </button>
+                  <button type="button" onClick={() => setTab("eventos")} className={`rounded-2xl px-4 py-2.5 text-sm transition ${tab === "eventos" ? "bg-white text-slate-950" : "border border-white/10 bg-transparent text-slate-300 hover:bg-white/5"}`}>
+                    Eventos
+                  </button>
+                  <button type="button" onClick={() => setTab("cadastro")} className={`rounded-2xl px-4 py-2.5 text-sm transition ${tab === "cadastro" ? "bg-white text-slate-950" : "border border-white/10 bg-transparent text-slate-300 hover:bg-white/5"}`}>
+                    Cadastro
+                  </button>
+                  <button type="button" onClick={() => setTab("operadores")} className={`rounded-2xl px-4 py-2.5 text-sm transition ${tab === "operadores" ? "bg-white text-slate-950" : "border border-white/10 bg-transparent text-slate-300 hover:bg-white/5"}`}>
+                    Operadores
+                  </button>
+                </div>
+              )}
             </div>
 
-            {syncMessage && (
-              <div className="mb-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-xs text-slate-300">
-                {syncMessage}
+            <div className="mb-4 space-y-2">
+              <Alert type={syncMessageType} message={syncMessage} />
+              <Alert type={scanMessageType} message={scanMessage} />
+            </div>
+
+            {role === "admin" && tab === "dashboard" && (
+              <div className="mb-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <StatCard label="Itens disponíveis" value={dashboardStats.disponiveis} helper="Prontos para uso" tone="emerald" />
+                <StatCard label="Itens em uso" value={dashboardStats.emUso} helper="Vinculados a eventos" tone="blue" />
+                <StatCard label="Em manutenção" value={dashboardStats.manutencao} helper="Bloqueados para operação" tone="amber" />
+                <StatCard label="Eventos abertos" value={dashboardStats.eventosAbertos} helper="Programados ou em andamento" tone="rose" />
               </div>
             )}
 
-            {role === "admin" && (
-              <div className="mb-4 grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setTab("patrimonio")}
-                  className={`rounded-2xl border p-3 text-left transition ${
-                    tab === "patrimonio"
-                      ? "border-blue-400/30 bg-blue-500/15 text-white"
-                      : "border-white/10 bg-white/5 text-slate-300"
-                  }`}
-                >
-                  <p className="text-sm font-semibold">Patrimônio</p>
-                  <p className="mt-1 text-xs text-slate-400">Itens e status</p>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTab("eventos")}
-                  className={`rounded-2xl border p-3 text-left transition ${
-                    tab === "eventos"
-                      ? "border-emerald-400/30 bg-emerald-500/15 text-white"
-                      : "border-white/10 bg-white/5 text-slate-300"
-                  }`}
-                >
-                  <p className="text-sm font-semibold">Eventos</p>
-                  <p className="mt-1 text-xs text-slate-400">Programação e histórico</p>
-                </button>
+            {role === "admin" && tab === "cadastro" && (
+              <Panel title="Cadastrar item" subtitle="Formulário simples para novo cadastro">
+                <div className="grid gap-3 md:grid-cols-2">
+                  <Input placeholder="Nome do item" value={name} onChange={(e) => setName(e.target.value)} />
+                  <Select value={category} onChange={(e) => setCategory(e.target.value)}>
+                    <option value="som" className="text-black">Som</option>
+                    <option value="luz" className="text-black">Luz</option>
+                    <option value="led" className="text-black">LED</option>
+                    <option value="estrutura" className="text-black">Estrutura</option>
+                  </Select>
+                  <Input type="number" min="1" placeholder="Quantidade" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+                  <Input placeholder="Código de barras" value={barcode} onChange={(e) => setBarcode(e.target.value)} />
+                </div>
+                <div className="mt-3 flex flex-col gap-3 md:flex-row">
+                  <Button type="button" variant="outline" onClick={() => openBarcodeScanner("create")} className="w-full">Ler código pela câmera</Button>
+                  <Button type="button" onClick={addItem} className="w-full">Cadastrar item</Button>
+                </div>
+              </Panel>
+            )}
+
+            {role === "admin" && tab === "operadores" && (
+              <div className="space-y-4">
+                <Panel title={editingOperatorId ? "Editar operador" : "Cadastrar operador"} subtitle="Os operadores agora são salvos no Supabase">
+                  <div className="grid gap-3 md:grid-cols-3">
+                    <Input placeholder="Nome do operador" value={operatorName} onChange={(e) => setOperatorName(e.target.value)} />
+                    
+                    <Input type="password" placeholder="Senha" value={operatorPassword} onChange={(e) => setOperatorPassword(e.target.value)} />
+                  </div>
+                  <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+                    <Button onClick={saveOperator}>{editingOperatorId ? "Salvar operador" : "Cadastrar operador"}</Button>
+                    <Button variant="outline" onClick={resetOperatorForm}>Limpar formulário</Button>
+                    <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-xs text-slate-400">
+                      O acesso do operador agora exige login e senha.
+                    </div>
+                  </div>
+                </Panel>
+
+                {operators.length === 0 ? (
+                  <EmptyState title="Nenhum operador cadastrado" text="Cadastre pelo menos um operador para liberar o acesso operacional." />
+                ) : (
+                  <div className="space-y-3">
+                    {operators.map((operator) => (
+                      <div key={operator.id} className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                          <div>
+                            <p className="text-base font-semibold text-white">{operator.name}</p>
+                            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-400">
+                              <span>Login: {operator.login} (automático)</span>
+                              <span>Senha: {operator.password}</span>
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <Button size="sm" variant="outline" onClick={() => startEditOperator(operator)}>Editar</Button>
+                            <Button size="sm" variant="destructive" onClick={() => deleteOperator(operator.id)}>Excluir</Button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
             {role === "admin" && tab === "patrimonio" && (
               <div className="space-y-4">
-                <div className="rounded-3xl border border-white/10 bg-white/5 p-4 backdrop-blur">
-                  <div className="mb-3">
-                    <h2 className="text-lg font-semibold">Cadastrar item</h2>
-                  </div>
-                  <div className="space-y-3">
-                    <Input placeholder="Nome do item" value={name} onChange={(e) => setName(e.target.value)} />
-                    <select
-                      className="w-full rounded-xl border border-white/10 bg-white/5 p-2 text-white"
-                      value={category}
-                      onChange={(e) => setCategory(e.target.value)}
-                    >
+                <Panel title="Estoque" subtitle="Busca e filtros em uma única linha">
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    <Input placeholder="Buscar item por nome ou código" value={itemSearch} onChange={(e) => setItemSearch(e.target.value)} />
+                    <Select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
+                      <option value="todos" className="text-black">Todas as categorias</option>
                       <option value="som" className="text-black">Som</option>
                       <option value="luz" className="text-black">Luz</option>
                       <option value="led" className="text-black">LED</option>
                       <option value="estrutura" className="text-black">Estrutura</option>
-                    </select>
-                    <Input type="number" min="1" placeholder="Quantidade" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
-                    <Input placeholder="Código de barras" value={barcode} onChange={(e) => setBarcode(e.target.value)} />
-                    <Button type="button" variant="outline" onClick={() => openBarcodeScanner("create")} className="w-full">
-                      Ler código pela câmera
-                    </Button>
-                    {scanMessage && <p className="text-xs text-red-300">{scanMessage}</p>}
-                    <Button type="button" onClick={addItem} className="w-full">Cadastrar</Button>
+                    </Select>
+                    <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                      <option value="todos" className="text-black">Todos os status</option>
+                      <option value="disponivel" className="text-black">Disponível</option>
+                      <option value="em_uso" className="text-black">Em uso</option>
+                      <option value="manutencao" className="text-black">Em manutenção</option>
+                    </Select>
+                    <Select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+                      <option value="recentes" className="text-black">Mais recentes</option>
+                      <option value="nome" className="text-black">Nome A-Z</option>
+                      <option value="quantidade" className="text-black">Maior quantidade</option>
+                    </Select>
                   </div>
-                </div>
+                </Panel>
 
                 {editingItem && (
-                  <div className="rounded-3xl border border-white/10 bg-white/5 p-4 backdrop-blur">
-                    <div className="mb-3">
-                      <h2 className="text-lg font-semibold">Editar item</h2>
-                    </div>
-                    <div className="space-y-3">
+                  <Panel title="Editar item" subtitle="Atualize os dados do equipamento">
+                    <div className="grid gap-3 md:grid-cols-2">
                       <Input value={editingItem.name} onChange={(e) => setEditingItem({ ...editingItem, name: e.target.value })} />
-                      <select
-                        className="w-full rounded-xl border border-white/10 bg-white/5 p-2 text-white"
-                        value={editingItem.category}
-                        onChange={(e) => setEditingItem({ ...editingItem, category: e.target.value })}
-                      >
+                      <Select value={editingItem.category} onChange={(e) => setEditingItem({ ...editingItem, category: e.target.value })}>
                         <option value="som" className="text-black">Som</option>
                         <option value="luz" className="text-black">Luz</option>
                         <option value="led" className="text-black">LED</option>
                         <option value="estrutura" className="text-black">Estrutura</option>
-                      </select>
+                      </Select>
                       <Input type="number" min="1" value={editingItem.quantity} onChange={(e) => setEditingItem({ ...editingItem, quantity: e.target.value })} />
                       <Input value={editingItem.barcode} onChange={(e) => setEditingItem({ ...editingItem, barcode: e.target.value })} />
-                      <Button type="button" variant="outline" onClick={() => openBarcodeScanner("edit")} className="w-full">
-                        Ler código pela câmera
-                      </Button>
-                      <div className="grid grid-cols-2 gap-3">
-                        <Button onClick={updateItem}>Salvar</Button>
-                        <Button variant="outline" onClick={() => setEditingItem(null)}>Cancelar</Button>
-                      </div>
                     </div>
-                  </div>
+                    <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+                      <Button type="button" variant="outline" onClick={() => openBarcodeScanner("edit")}>Ler código pela câmera</Button>
+                      <Button onClick={updateItem}>Salvar alterações</Button>
+                      <Button variant="ghost" onClick={() => setEditingItem(null)}>Cancelar</Button>
+                    </div>
+                  </Panel>
                 )}
 
-                <div className="rounded-3xl border border-white/10 bg-white/5 p-3 backdrop-blur overflow-hidden">
-                  {items.length === 0 ? (
-                    <div className="p-4 text-sm text-slate-400">Nenhum item catalogado ainda.</div>
-                  ) : (
-                    <>
-                      <div className="grid grid-cols-4 gap-2 rounded-2xl bg-white/5 p-3 text-[11px] uppercase tracking-wide text-slate-400">
-                        <span>Nome</span>
-                        <span>Categoria</span>
-                        <span>Qtd</span>
-                        <span>Status</span>
-                      </div>
-                      <div className="mt-2 space-y-2">
-                        {items.map((item) => {
-                          const status = getItemStatus(item);
-                          return (
-                            <div key={item.id} className="rounded-2xl border border-white/10 bg-slate-950/40 p-3">
-                              <div className="grid grid-cols-4 gap-2 items-center text-sm">
-                                <span className="truncate text-white">{item.name}</span>
-                                <span className="text-slate-300">{item.category}</span>
-                                <span className="text-slate-300">{item.quantity}</span>
-                                <span>
-                                  <span className={`inline-flex rounded-full px-2 py-1 text-[11px] font-medium ${status.badge}`}>
-                                    {status.label}
-                                  </span>
-                                </span>
+                {filteredItems.length === 0 ? (
+                  <EmptyState title="Nenhum item encontrado" text="Ajuste os filtros ou cadastre um novo item no estoque." />
+                ) : (
+                  <div className="space-y-3">
+                    {filteredItems.map((item) => {
+                      const status = getItemStatus(item);
+                      return (
+                        <div key={item.id} className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="truncate text-base font-semibold text-white">{item.name}</p>
+                                <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-medium ${status.badge}`}>{status.label}</span>
                               </div>
-                              <div className="mt-3 flex gap-2 flex-wrap">
-                                <Button size="sm" onClick={() => setEditingItem({ ...item })} className="bg-white/10 hover:bg-white/15">
-                                  Editar
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => toggleMaintenance(item.id)}
-                                >
-                                  {item.status === "manutencao" ? "Liberar" : "Manutenção"}
-                                </Button>
-                                <Button size="sm" variant="destructive" onClick={() => deleteItem(item.id)}>
-                                  Excluir
-                                </Button>
+                              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-400">
+                                <span>{item.category}</span>
+                                <span>Qtd: {item.quantity}</span>
+                                <span>Cód: {item.barcode}</span>
                               </div>
                             </div>
-                          );
-                        })}
-                      </div>
-                    </>
-                  )}
-                </div>
+                            <div className="flex flex-wrap gap-2">
+                              <Button size="sm" variant="outline" onClick={() => setEditingItem({ ...item })}>Editar</Button>
+                              <Button size="sm" variant="outline" onClick={() => toggleMaintenance(item.id)}>{item.status === "manutencao" ? "Liberar" : "Manutenção"}</Button>
+                              <Button size="sm" variant="destructive" onClick={() => deleteItem(item.id)}>Excluir</Button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
 
@@ -1129,27 +1487,11 @@
               <div className="space-y-4">
                 {role === "admin" && (
                   <div className="grid grid-cols-2 gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setEventsView("lista")}
-                      className={`rounded-2xl border p-3 text-left transition ${
-                        eventsView === "lista"
-                          ? "border-emerald-400/30 bg-emerald-500/15 text-white"
-                          : "border-white/10 bg-white/5 text-slate-300"
-                      }`}
-                    >
-                      <p className="text-sm font-semibold">Programados</p>
+                    <button type="button" onClick={() => setEventsView("lista")} className={`rounded-2xl border p-3 text-left transition ${eventsView === "lista" ? "border-emerald-400/30 bg-emerald-500/15 text-white" : "border-white/10 bg-white/5 text-slate-300"}`}>
+                      <p className="text-sm font-semibold">Eventos</p>
                       <p className="mt-1 text-xs text-slate-400">Acompanhar</p>
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => setEventsView("novo")}
-                      className={`rounded-2xl border p-3 text-left transition ${
-                        eventsView === "novo"
-                          ? "border-blue-400/30 bg-blue-500/15 text-white"
-                          : "border-white/10 bg-white/5 text-slate-300"
-                      }`}
-                    >
+                    <button type="button" onClick={() => setEventsView("novo")} className={`rounded-2xl border p-3 text-left transition ${eventsView === "novo" ? "border-blue-400/30 bg-blue-500/15 text-white" : "border-white/10 bg-white/5 text-slate-300"}`}>
                       <p className="text-sm font-semibold">Novo evento</p>
                       <p className="mt-1 text-xs text-slate-400">Criar</p>
                     </button>
@@ -1157,336 +1499,237 @@
                 )}
 
                 {eventsView === "novo" && role === "admin" && (
-                  <div className="rounded-3xl border border-white/10 bg-white/5 p-4 backdrop-blur">
-                    <div className="mb-3">
-                      <h2 className="text-lg font-semibold">{editingEvent ? "Editar evento" : "Criar evento"}</h2>
-                    </div>
-                    <div className="space-y-3">
+                  <Panel title={editingEvent ? "Editar evento" : "Criar evento"} subtitle="Vincule itens do estoque a uma operação">
+                    <div className="grid gap-3 md:grid-cols-2">
                       <Input placeholder="Nome do evento" value={eventName} onChange={(e) => setEventName(e.target.value)} />
                       <Input type="date" value={eventDate} onChange={(e) => setEventDate(e.target.value)} />
                       <Input placeholder="Local do evento" value={eventLocation} onChange={(e) => setEventLocation(e.target.value)} />
-                      <textarea
-                        className="min-h-[110px] w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white outline-none placeholder:text-slate-500"
-                        placeholder="Informações adicionais"
-                        value={eventNotes}
-                        onChange={(e) => setEventNotes(e.target.value)}
-                      />
-                      <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-3">
-                        <p className="mb-2 text-sm font-medium text-white">Itens disponíveis</p>
-                        <div className="space-y-2 max-h-48 overflow-y-auto text-sm">
-                          {items.length === 0 ? (
-                            <p className="text-slate-400">Nenhum item catalogado.</p>
-                          ) : (
-                            items.map((item) => {
-                              const selected = !!selectedItems.find((i) => i.id === item.id);
-                              const available = isItemAvailable(item) || selected;
-                              return (
-                                <label
-                                  key={item.id}
-                                  className={`flex items-center gap-2 rounded-xl px-2 py-2 ${!available ? "opacity-50" : ""}`}
-                                >
-                                  <input
-                                    type="checkbox"
-                                    disabled={!available}
-                                    checked={selected}
-                                    onChange={() => toggleItem(item)}
-                                  />
-                                  <span className="text-slate-200">
-                                    {item.name} ({item.category}) - {item.quantity} unidade{item.quantity > 1 ? "s" : ""}
-                                    {!available && " • INDISPONÍVEL"}
-                                  </span>
-                                </label>
-                              );
-                            })
-                          )}
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <Button onClick={editingEvent ? updateEvent : addEvent} className="w-full">
-                          {editingEvent ? "Salvar evento" : "Cadastrar evento"}
-                        </Button>
-                        <Button variant="outline" onClick={() => {
-                          resetEventForm();
-                          setEventsView("lista");
-                        }} className="w-full">
-                          Cancelar
-                        </Button>
+                      <Input placeholder="Observações rápidas" value={eventNotes} onChange={(e) => setEventNotes(e.target.value)} />
+                    </div>
+                    <div className="mt-3 rounded-2xl border border-white/10 bg-slate-950/40 p-3">
+                      <p className="mb-2 text-sm font-medium text-white">Itens disponíveis para o evento</p>
+                      <div className="max-h-56 space-y-2 overflow-y-auto text-sm">
+                        {items.length === 0 ? (
+                          <p className="text-slate-400">Nenhum item catalogado.</p>
+                        ) : (
+                          items.map((item) => {
+                            const selected = !!selectedItems.find((i) => i.id === item.id);
+                            const available = isItemAvailable(item) || selected;
+                            return (
+                              <label key={item.id} className={`flex items-center gap-2 rounded-xl px-2 py-2 ${!available ? "opacity-50" : ""}`}>
+                                <input type="checkbox" disabled={!available} checked={selected} onChange={() => toggleItem(item)} />
+                                <span className="text-slate-200">
+                                  {item.name} ({item.category}) - {item.quantity} unidade{item.quantity > 1 ? "s" : ""}
+                                  {!available && " • INDISPONÍVEL"}
+                                </span>
+                              </label>
+                            );
+                          })
+                        )}
                       </div>
                     </div>
-                  </div>
+                    <div className="mt-3 grid grid-cols-2 gap-3">
+                      <Button onClick={editingEvent ? updateEvent : addEvent} className="w-full">{editingEvent ? "Salvar evento" : "Cadastrar evento"}</Button>
+                      <Button variant="outline" onClick={() => { resetEventForm(); setEventsView("lista"); }} className="w-full">Cancelar</Button>
+                    </div>
+                  </Panel>
                 )}
 
                 {(eventsView === "lista" || role === "operador") && (
-                  <div className="space-y-3">
-                    {role === "operador" && activeOperatorEvent ? (
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between gap-3 rounded-3xl border border-white/10 bg-white/5 p-4 backdrop-blur">
-                          <div>
-                            <p className="text-xs uppercase tracking-[0.22em] text-emerald-200">Evento aberto</p>
-                            <h2 className="mt-1 text-xl font-bold text-white">{activeOperatorEvent.name}</h2>
-                          </div>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
+                  <>
+                    {role === "admin" && (
+                      <Panel title="Eventos" subtitle="Consulta simples dos eventos cadastrados">
+                        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                          <Input placeholder="Buscar por nome, local ou observação" value={eventSearch} onChange={(e) => setEventSearch(e.target.value)} />
+                          <Select value={eventStatusFilter} onChange={(e) => setEventStatusFilter(e.target.value)}>
+                            <option value="todos" className="text-black">Todos os status</option>
+                            <option value="programado" className="text-black">Programado</option>
+                            <option value="andamento" className="text-black">Em andamento</option>
+                            <option value="finalizado" className="text-black">Finalizado</option>
+                          </Select>
+                        </div>
+                      </Panel>
+                    )}
+
+                    <div className="space-y-3">
+                      {role === "operador" && activeOperatorEvent ? (
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between gap-3 rounded-3xl border border-white/10 bg-white/5 p-4 backdrop-blur">
+                            <div>
+                              <p className="text-xs uppercase tracking-[0.22em] text-emerald-200">Evento aberto</p>
+                              <h2 className="mt-1 text-xl font-bold text-white">{activeOperatorEvent.name}</h2>
+                            </div>
+                            <Button size="sm" variant="outline" onClick={() => {
                               setOperatorView({ eventId: null, tab: "saida" });
                               setScanCode("");
-                              setScanMessage("");
-                            }}
-                            className="rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10"
-                          >
-                            Voltar
-                          </Button>
-                        </div>
-
-                        <div className="rounded-3xl border border-white/10 bg-white/5 p-4 backdrop-blur space-y-3">
-                          <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-3 text-sm text-slate-300 space-y-2">
-                            <p><span className="text-slate-400">Data:</span> {activeOperatorEvent.date || "-"}</p>
-                            <p><span className="text-slate-400">Local:</span> {activeOperatorEvent.location || "-"}</p>
-                            <p><span className="text-slate-400">Informações:</span> {activeOperatorEvent.notes || "-"}</p>
+                              setFeedback("");
+                              setPendingItem(null);
+                              setPendingScanCode("");
+                            }} className="rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10">Voltar</Button>
                           </div>
 
-                          <div className="flex gap-2">
-                            <Button size="sm" variant={operatorView.tab === "saida" ? "default" : "outline"} onClick={() => {
-                              setOperatorView((prev) => ({ ...prev, tab: "saida" }));
-                              setScanCode("");
-                              setScanMessage("");
-                            }} className={operatorView.tab === "saida" ? "rounded-2xl bg-blue-600 hover:bg-blue-500" : "rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10"}>
-                              Saída
-                            </Button>
-
-                            {activeOperatorEvent.saidaConcluida && (
-                              <Button
-                                size="sm"
-                                variant={operatorView.tab === "entrada" ? "default" : "outline"}
-                                onClick={() => {
-                                  setOperatorView((prev) => ({ ...prev, tab: "entrada" }));
-                                  setScanCode("");
-                                  setScanMessage("");
-                                }}
-                                className={operatorView.tab === "entrada" ? "rounded-2xl bg-emerald-600 hover:bg-emerald-500" : "rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10"}
-                              >
-                                Entrada
-                              </Button>
-                            )}
-                          </div>
-
-                          <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-3 space-y-3">
-                            <p className="text-sm font-medium text-white">
-                              {operatorView.tab === "saida" ? "Leitura de saída" : "Leitura de entrada"}
-                            </p>
-
-                            <Input
-                              placeholder="Leia ou digite o código de barras"
-                              value={scanCode}
-                              onChange={(e) => setScanCode(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") {
-                                  processBarcodeScan();
-                                }
-                              }}
-                              className="bg-white/5 text-white border-white/10"
-                            />
-
-                            <div className="flex gap-2">
-                              <Button onClick={processBarcodeScan} className="w-full rounded-2xl bg-blue-600 hover:bg-blue-500">Manual</Button>
-                              <Button onClick={() => {
-                                setOperatorScannerOpen(true);
-                                setScannerOpen(true);
-                              }} className="w-full">Scanner</Button>
+                          <Panel title="Operação do evento" subtitle="Controle de saída e devolução dos itens">
+                            <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-3 text-sm text-slate-300 space-y-2">
+                              <p><span className="text-slate-400">Data:</span> {activeOperatorEvent.date || "-"}</p>
+                              <p><span className="text-slate-400">Local:</span> {activeOperatorEvent.location || "-"}</p>
+                              <p><span className="text-slate-400">Informações:</span> {activeOperatorEvent.notes || "-"}</p>
                             </div>
 
-                            {scanMessage && <p className="text-xs text-slate-300">{scanMessage}</p>}
+                            <div className="mt-3 flex gap-2">
+                              <Button size="sm" variant={operatorView.tab === "saida" ? "default" : "outline"} onClick={() => {
+                                setOperatorView((prev) => ({ ...prev, tab: "saida" }));
+                                setScanCode("");
+                                setFeedback("");
+                              }} className={operatorView.tab === "saida" ? "rounded-2xl bg-blue-600 hover:bg-blue-500" : "rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10"}>Saída</Button>
 
-                            {activeOperatorEvent.saidaConcluida &&
-                              operatorView.tab === "saida" &&
-                              scanMessage.includes("Deseja ir para entrada") && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => {
-                                    setOperatorView((prev) => ({ ...prev, tab: "entrada" }));
-                                    setScanMessage("");
-                                    setScanCode("");
-                                  }}
-                                  className="w-full rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10"
-                                >
-                                  Ir para entrada
-                                </Button>
+                              {activeOperatorEvent.saidaConcluida && (
+                                <Button size="sm" variant={operatorView.tab === "entrada" ? "default" : "outline"} onClick={() => {
+                                  setOperatorView((prev) => ({ ...prev, tab: "entrada" }));
+                                  setScanCode("");
+                                  setFeedback("");
+                                }} className={operatorView.tab === "entrada" ? "rounded-2xl bg-emerald-600 hover:bg-emerald-500" : "rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10"}>Entrada</Button>
                               )}
+                            </div>
 
-                            {operatorView.tab === "saida" && !activeOperatorEvent.saidaConcluida && (() => {
-                              const totalItens = activeOperatorEvent.items.length;
-                              const totalConfirmados = activeOperatorEvent.saidaConfirmados.length;
-                              const podeConcluirSaida = totalItens > 0 && totalConfirmados === totalItens;
+                            <div className="mt-3 rounded-2xl border border-white/10 bg-slate-950/40 p-3 space-y-3">
+                              <p className="text-sm font-medium text-white">{operatorView.tab === "saida" ? "Leitura de saída" : "Leitura de entrada"}</p>
 
-                              return (
-                                <>
-                                  {!podeConcluirSaida && (
-                                    <p className="text-xs text-red-300">
-                                      Confirme a leitura de todos os itens para concluir a saída.
-                                    </p>
-                                  )}
+                              <Input placeholder="Leia ou digite o código de barras" value={scanCode} onChange={(e) => setScanCode(e.target.value)} onKeyDown={(e) => {
+                                if (e.key === "Enter") processBarcodeScan();
+                              }} className="bg-white/5 text-white border-white/10" />
 
-                                  <Button
-                                    variant="secondary"
-                                    disabled={!podeConcluirSaida}
-                                    onClick={async () => {
+                              <div className="flex gap-2">
+                                <Button onClick={processBarcodeScan} className="w-full rounded-2xl bg-blue-600 hover:bg-blue-500">Registrar manualmente</Button>
+                                <Button onClick={() => {
+                                  setOperatorScannerOpen(true);
+                                  setScannerOpen(true);
+                                }} className="w-full">Abrir scanner</Button>
+                              </div>
+
+                              {operatorView.tab === "saida" && !activeOperatorEvent.saidaConcluida && (() => {
+                                const totalItens = activeOperatorEvent.items.length;
+                                const totalConfirmados = activeOperatorEvent.saidaConfirmados.length;
+                                const podeConcluirSaida = totalItens > 0 && totalConfirmados === totalItens;
+
+                                return (
+                                  <>
+                                    {!podeConcluirSaida && (
+                                      <p className="text-xs text-red-300">Confirme a leitura de todos os itens para concluir a saída.</p>
+                                    )}
+
+                                    <Button variant="secondary" disabled={!podeConcluirSaida} onClick={async () => {
                                       if (!podeConcluirSaida) return;
-
                                       const patch = {
                                         saidaConcluida: true,
                                         saidaConcluidaEm: new Date().toLocaleString("pt-BR"),
                                       };
-
                                       const ok = await saveEventUpdate(activeOperatorEvent.id, patch);
                                       if (!ok) {
-                                        setScanMessage("Erro ao concluir saída.");
+                                        setFeedback("Erro ao concluir saída.", "error");
                                         return;
                                       }
-
-                                      setEvents(
-                                        events.map((event) =>
-                                          event.id === activeOperatorEvent.id ? { ...event, ...patch } : event
-                                        )
-                                      );
+                                      setEvents(events.map((event) => event.id === activeOperatorEvent.id ? { ...event, ...patch } : event));
                                       setScanCode("");
-                                      setScanMessage("Bom evento! 🎉 Deseja ir para entrada?");
-                                    }}
-                                    className="w-full rounded-2xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50"
-                                  >
-                                    Concluir saída
-                                  </Button>
-                                </>
-                              );
-                            })()}
-                          </div>
-
-                          <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-3 space-y-2">
-                            {activeOperatorEvent.items.length === 0 ? (
-                              <p className="text-xs text-slate-400">Sem itens</p>
-                            ) : (
-                              activeOperatorEvent.items.map((i) => {
-                                const confirmed = isConfirmed(activeOperatorEvent, i, operatorView.tab);
-                                return (
-                                  <div
-                                    key={i.id}
-                                    className="flex items-center justify-between gap-2 rounded-xl border border-white/5 bg-white/[0.03] px-3 py-2 text-xs"
-                                  >
-                                    <div>
-                                      <p className="text-white">
-                                        {i.name} ({i.category}) - {i.quantity} unidade{i.quantity > 1 ? "s" : ""}
-                                      </p>
-                                      <p className="text-slate-400">Código: {i.barcode}</p>
-                                    </div>
-                                    <span
-                                      className={
-                                        confirmed ? "font-medium text-green-400" : "font-medium text-red-400"
-                                      }
-                                    >
-                                      {confirmed ? "Lido" : "Pendente"}
-                                    </span>
-                                  </div>
+                                      setFeedback("Saída concluída. Agora a entrada está liberada.", "success");
+                                    }} className="w-full rounded-2xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50">Concluir saída</Button>
+                                  </>
                                 );
-                              })
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ) : events.length === 0 ? (
-                      <div className="rounded-3xl border border-white/10 bg-white/5 p-4 text-sm text-slate-400 backdrop-blur">
-                        Nenhum evento programado.
-                      </div>
-                    ) : (
-                      (role === "operador" ? events.filter((ev) => !ev.finalizado) : events).map((ev) => (
-                        <div key={ev.id} className="rounded-3xl border border-white/10 bg-white/5 p-4 backdrop-blur">
-                          <div className="flex items-center justify-between gap-3">
-                            <p className="text-lg font-semibold text-white">{ev.name}</p>
-                            {ev.finalizado && (
-                              <span className="rounded-full bg-green-500/15 px-3 py-1 text-xs font-medium text-green-300">
-                                Evento concluído
-                              </span>
-                            )}
-                          </div>
-
-                          <div className="mt-3 rounded-2xl border border-white/10 bg-slate-950/40 p-3 text-sm text-slate-300 space-y-2">
-                            <p><span className="text-slate-400">Data:</span> {ev.date || "-"}</p>
-                            <p><span className="text-slate-400">Local:</span> {ev.location || "-"}</p>
-                            <p><span className="text-slate-400">Informações:</span> {ev.notes || "-"}</p>
-                          </div>
-
-                          {role === "admin" && (
-                            <div className="mt-4 grid gap-3 text-sm text-slate-300">
-                              <div className="flex gap-2 flex-wrap">
-                                <Button size="sm" onClick={() => startEditEvent(ev)} className="bg-white/10 hover:bg-white/15">
-                                  Editar evento
-                                </Button>
-                                <Button size="sm" variant="destructive" onClick={() => deleteEvent(ev.id)}>
-                                  Excluir evento
-                                </Button>
-                              </div>
-
-                              <div className="grid grid-cols-2 gap-3">
-                                <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-3">
-                                  <p className="text-xs uppercase tracking-wide text-slate-400">Saída</p>
-                                  <p className="mt-1 font-medium">{ev.saidaConcluida ? "Concluída" : "Pendente"}</p>
-                                  <p className="mt-1 text-xs text-slate-400">Todos confirmados: {ev.items.length > 0 && ev.saidaConfirmados.length === ev.items.length ? "Sim" : "Não"}</p>
-                                  <p className="mt-1 text-xs text-slate-400">Horário: {ev.saidaConcluidaEm || "-"}</p>
-                                </div>
-                                <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-3">
-                                  <p className="text-xs uppercase tracking-wide text-slate-400">Entrada</p>
-                                  <p className="mt-1 font-medium">{ev.finalizado ? "Concluída" : "Pendente"}</p>
-                                  <p className="mt-1 text-xs text-slate-400">Todos confirmados: {ev.items.length > 0 && ev.entradaConfirmados.length === ev.items.length ? "Sim" : "Não"}</p>
-                                  <p className="mt-1 text-xs text-slate-400">Horário: {ev.entradaConcluidaEm || "-"}</p>
-                                </div>
-                              </div>
-
-                              <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-3">
-                                <p className="mb-2 text-sm font-medium text-white">Registros de saída</p>
-                                {ev.saidaHistorico.length === 0 ? (
-                                  <p className="text-xs text-slate-400">Sem registros</p>
-                                ) : (
-                                  ev.saidaHistorico.map((registro) => (
-                                    <p key={registro.id} className="text-xs text-slate-300">
-                                      {registro.itemName} • {registro.time}
-                                    </p>
-                                  ))
-                                )}
-                              </div>
-
-                              <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-3">
-                                <p className="mb-2 text-sm font-medium text-white">Registros de entrada</p>
-                                {ev.entradaHistorico.length === 0 ? (
-                                  <p className="text-xs text-slate-400">Sem registros</p>
-                                ) : (
-                                  ev.entradaHistorico.map((registro) => (
-                                    <p key={registro.id} className="text-xs text-slate-300">
-                                      {registro.itemName} • {registro.time}
-                                    </p>
-                                  ))
-                                )}
-                              </div>
+                              })()}
                             </div>
-                          )}
 
-                          {role === "operador" && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                setOperatorView({ eventId: ev.id, tab: "saida" });
-                                setScanCode("");
-                                setScanMessage("");
-                              }}
-                              className="mt-4 rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10"
-                            >
-                              Abrir
-                            </Button>
-                          )}
+                            <div className="mt-3 rounded-2xl border border-white/10 bg-slate-950/40 p-3 space-y-2">
+                              {activeOperatorEvent.items.length === 0 ? (
+                                <p className="text-xs text-slate-400">Sem itens</p>
+                              ) : (
+                                activeOperatorEvent.items.map((i) => {
+                                  const confirmed = isConfirmed(activeOperatorEvent, i, operatorView.tab);
+                                  return (
+                                    <div key={i.id} className="flex items-center justify-between gap-2 rounded-xl border border-white/5 bg-white/[0.03] px-3 py-2 text-xs">
+                                      <div>
+                                        <p className="text-white">{i.name} ({i.category}) - {i.quantity} unidade{i.quantity > 1 ? "s" : ""}</p>
+                                        <p className="text-slate-400">Código: {i.barcode}</p>
+                                      </div>
+                                      <span className={confirmed ? "font-medium text-green-400" : "font-medium text-red-400"}>{confirmed ? "Lido" : "Pendente"}</span>
+                                    </div>
+                                  );
+                                })
+                              )}
+                            </div>
+                          </Panel>
                         </div>
-                      ))
-                    )}
-                  </div>
+                      ) : filteredEvents.length === 0 ? (
+                        <EmptyState title="Nenhum evento encontrado" text="Cadastre um novo evento ou ajuste os filtros para localizar registros." />
+                      ) : (
+                        filteredEvents
+                          .filter((ev) => role === "operador" ? !ev.finalizado : true)
+                          .map((ev) => {
+                            const stage = getEventStage(ev);
+                            return (
+                              <div key={ev.id} className="rounded-3xl border border-white/10 bg-white/5 p-4 backdrop-blur">
+                                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                                  <div>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <p className="text-lg font-semibold text-white">{ev.name}</p>
+                                      <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-medium ${stage.badge}`}>{stage.label}</span>
+                                    </div>
+                                    <div className="mt-3 rounded-2xl border border-white/10 bg-slate-950/40 p-3 text-sm text-slate-300 space-y-2">
+                                      <p><span className="text-slate-400">Data:</span> {ev.date || "-"}</p>
+                                      <p><span className="text-slate-400">Local:</span> {ev.location || "-"}</p>
+                                      <p><span className="text-slate-400">Informações:</span> {ev.notes || "-"}</p>
+                                      <p><span className="text-slate-400">Itens vinculados:</span> {ev.items.length}</p>
+                                    </div>
+                                  </div>
+
+                                  {role === "admin" ? (
+                                    <div className="flex flex-wrap gap-2">
+                                      <Button size="sm" onClick={() => startEditEvent(ev)} className="bg-white/10 hover:bg-white/15">Editar evento</Button>
+                                      <Button size="sm" variant="destructive" onClick={() => deleteEvent(ev.id)}>Excluir evento</Button>
+                                    </div>
+                                  ) : (
+                                    <Button size="sm" variant="outline" onClick={() => {
+                                      setOperatorView({ eventId: ev.id, tab: "saida" });
+                                      setScanCode("");
+                                      setFeedback("");
+                                    }} className="rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10">Abrir operação</Button>
+                                  )}
+                                </div>
+
+                                {role === "admin" && (
+                                  <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                                    <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-3">
+                                      <p className="text-xs uppercase tracking-wide text-slate-400">Saída</p>
+                                      <p className="mt-1 font-medium text-white">{ev.saidaConcluida ? "Concluída" : "Pendente"}</p>
+                                      <p className="mt-1 text-xs text-slate-400">Confirmados: {ev.saidaConfirmados.length} / {ev.items.length}</p>
+                                      <p className="mt-1 text-xs text-slate-400">Horário: {ev.saidaConcluidaEm || "-"}</p>
+                                    </div>
+                                    <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-3">
+                                      <p className="text-xs uppercase tracking-wide text-slate-400">Entrada</p>
+                                      <p className="mt-1 font-medium text-white">{ev.finalizado ? "Concluída" : "Pendente"}</p>
+                                      <p className="mt-1 text-xs text-slate-400">Confirmados: {ev.entradaConfirmados.length} / {ev.items.length}</p>
+                                      <p className="mt-1 text-xs text-slate-400">Horário: {ev.entradaConcluidaEm || "-"}</p>
+                                    </div>
+
+                                    <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-3">
+                                      <p className="mb-2 text-sm font-medium text-white">Registros de saída</p>
+                                      {ev.saidaHistorico.length === 0 ? <p className="text-xs text-slate-400">Sem registros</p> : ev.saidaHistorico.map((registro) => (
+                                        <p key={registro.id} className="text-xs text-slate-300">{registro.itemName} • {registro.time}</p>
+                                      ))}
+                                    </div>
+
+                                    <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-3">
+                                      <p className="mb-2 text-sm font-medium text-white">Registros de entrada</p>
+                                      {ev.entradaHistorico.length === 0 ? <p className="text-xs text-slate-400">Sem registros</p> : ev.entradaHistorico.map((registro) => (
+                                        <p key={registro.id} className="text-xs text-slate-300">{registro.itemName} • {registro.time}</p>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })
+                      )}
+                    </div>
+                  </>
                 )}
               </div>
             )}
