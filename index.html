@@ -14,7 +14,7 @@
   <div id="root"></div>
 
   <script type="text/babel">
-    const { useEffect, useMemo, useState } = React;
+    const { useEffect, useMemo, useRef, useState } = React;
 
     const SUPABASE_URL = "https://mwmewkhowltrwyboakvl.supabase.co";
     const SUPABASE_ANON_KEY = "sb_publishable_l-xO9VFLWY5IA1D5pM56-w_dMqM41e9";
@@ -65,10 +65,6 @@
       const [barcode, setBarcode] = useState("");
 
       const [editingItem, setEditingItem] = useState(null);
-      const [maintenanceIds, setMaintenanceIds] = useState(() => {
-        try { return JSON.parse(localStorage.getItem("stagesync_maintenance_ids") || "[]"); }
-        catch { return []; }
-      });
 
       const [eventName, setEventName] = useState("");
       const [eventDate, setEventDate] = useState("");
@@ -78,10 +74,7 @@
       const [scanCode, setScanCode] = useState("");
       const [scanMessage, setScanMessage] = useState("");
       const [syncMessage, setSyncMessage] = useState("");
-
-      useEffect(() => {
-        localStorage.setItem("stagesync_maintenance_ids", JSON.stringify(maintenanceIds));
-      }, [maintenanceIds]);
+      const statusSyncRef = useRef("");
 
       function normalizeCode(value) {
         return String(value || "").trim();
@@ -91,6 +84,13 @@
         if (Array.isArray(value)) return value;
         if (value == null || value === "") return [];
         try { return JSON.parse(value); } catch { return []; }
+      }
+
+      function normalizeItem(item) {
+        return {
+          ...item,
+          status: item?.status || "disponivel",
+        };
       }
 
       function normalizeEvent(event) {
@@ -108,6 +108,76 @@
         };
       }
 
+      function getItemStatusValue(item, currentEvents = events) {
+        if (item?.status === "manutencao") {
+          return "manutencao";
+        }
+
+        const activeEvent = currentEvents.find(
+          (event) => !event.finalizado && event.items.some((eventItem) => eventItem.id === item.id)
+        );
+
+        if (activeEvent) {
+          return "em_uso";
+        }
+
+        return "disponivel";
+      }
+
+      async function syncItemStatuses(currentItems = items, currentEvents = events) {
+        if (!currentItems.length) {
+          statusSyncRef.current = "";
+          return;
+        }
+
+        const itemsWithStatus = currentItems.map((item) => ({
+          ...item,
+          status: getItemStatusValue(item, currentEvents),
+        }));
+
+        const snapshot = JSON.stringify(
+          itemsWithStatus.map((item) => ({ id: item.id, status: item.status }))
+        );
+
+        if (snapshot === statusSyncRef.current) return;
+
+        const changedItems = itemsWithStatus.filter((item) => {
+          const originalItem = currentItems.find((currentItem) => currentItem.id === item.id);
+          return (originalItem?.status || "disponivel") !== item.status;
+        });
+
+        setItems((prev) =>
+          prev.map((item) => {
+            const updated = itemsWithStatus.find((nextItem) => nextItem.id === item.id);
+            return updated ? { ...item, status: updated.status } : item;
+          })
+        );
+
+        if (!changedItems.length) {
+          statusSyncRef.current = snapshot;
+          return;
+        }
+
+        const results = await Promise.all(
+          changedItems.map((item) =>
+            supabase
+              .from("items")
+              .update({ status: item.status })
+              .eq("id", item.id)
+          )
+        );
+
+        const failed = results.find((result) => result.error);
+
+        if (failed?.error) {
+          setSyncMessage(`Erro ao salvar status: ${failed.error.message}`);
+          return;
+        }
+
+        statusSyncRef.current = snapshot;
+        setSyncMessage("");
+      }
+
       async function fetchAll(showLoading = true) {
         if (showLoading) setLoading(true);
 
@@ -120,7 +190,7 @@
         if (itemsError) {
           setSyncMessage("Erro ao carregar itens.");
         } else {
-          setItems(itemsData || []);
+          setItems((itemsData || []).map(normalizeItem));
         }
 
         if (eventsError) {
@@ -138,6 +208,11 @@
         const interval = setInterval(() => fetchAll(false), 4000);
         return () => clearInterval(interval);
       }, []);
+
+      useEffect(() => {
+        if (loading) return;
+        syncItemStatuses(items, events);
+      }, [items, events, loading]);
 
       function selectRole(nextRole) {
         setRole(nextRole);
@@ -172,6 +247,7 @@
           category,
           quantity: Number(quantity),
           barcode: normalizedBarcode,
+          status: "disponivel",
         };
 
         const { data, error } = await supabase.from("items").insert([newItem]).select().single();
@@ -207,6 +283,7 @@
           name: String(editingItem.name || "").trim(),
           quantity: Number(editingItem.quantity),
           barcode: normalizedBarcode,
+          status: editingItem.status || getItemStatusValue(editingItem),
         };
 
         const { error } = await supabase
@@ -216,6 +293,7 @@
             category: updatedItem.category,
             quantity: updatedItem.quantity,
             barcode: updatedItem.barcode,
+            status: updatedItem.status,
           })
           .eq("id", updatedItem.id);
 
@@ -271,11 +349,7 @@
       }
 
       function isItemAvailable(item) {
-        const inMaintenance = maintenanceIds.includes(item.id);
-        const inEvent = events.some(
-          (event) => !event.finalizado && event.items.some((i) => i.id === item.id)
-        );
-        return !inMaintenance && !inEvent;
+        return getItemStatusValue(item) === "disponivel";
       }
 
       function toggleItem(item) {
@@ -473,21 +547,23 @@
       }
 
       function getItemStatus(item) {
-        if (maintenanceIds.includes(item.id)) {
+        const status = getItemStatusValue(item);
+
+        if (status === "manutencao") {
           return {
             label: "Em manutenção",
             badge: "text-yellow-700 bg-yellow-100",
           };
         }
 
-        const activeEvent = events.find(
-          (event) => !event.finalizado && event.items.some((eventItem) => eventItem.id === item.id)
-        );
+        if (status === "em_uso") {
+          const activeEvent = events.find(
+            (event) => !event.finalizado && event.items.some((eventItem) => eventItem.id === item.id)
+          );
 
-        if (activeEvent) {
           return {
             label: "Em uso",
-            badge: activeEvent.saidaConcluida
+            badge: activeEvent?.saidaConcluida
               ? "text-purple-700 bg-purple-100"
               : "text-blue-700 bg-blue-100",
           };
@@ -499,7 +575,10 @@
         };
       }
 
-      function toggleMaintenance(itemId) {
+      async function toggleMaintenance(itemId) {
+        const targetItem = items.find((item) => item.id === itemId);
+        if (!targetItem) return;
+
         const activeEventUsingItem = events.some(
           (event) => !event.finalizado && event.items.some((item) => item.id === itemId)
         );
@@ -509,9 +588,24 @@
           return;
         }
 
-        setMaintenanceIds((prev) =>
-          prev.includes(itemId) ? prev.filter((id) => id !== itemId) : [...prev, itemId]
+        const nextStatus = targetItem.status === "manutencao" ? "disponivel" : "manutencao";
+
+        const { error } = await supabase
+          .from("items")
+          .update({ status: nextStatus })
+          .eq("id", itemId);
+
+        if (error) {
+          setSyncMessage(`Erro ao salvar status: ${error.message}`);
+          return;
+        }
+
+        setItems((prev) =>
+          prev.map((item) =>
+            item.id === itemId ? { ...item, status: nextStatus } : item
+          )
         );
+        setScanMessage("");
       }
 
       if (loading) {
@@ -721,7 +815,7 @@
                                   variant="outline"
                                   onClick={() => toggleMaintenance(item.id)}
                                 >
-                                  {maintenanceIds.includes(item.id) ? "Liberar" : "Manutenção"}
+                                  {item.status === "manutencao" ? "Liberar" : "Manutenção"}
                                 </Button>
                                 <Button size="sm" variant="destructive" onClick={() => deleteItem(item.id)}>
                                   Excluir
