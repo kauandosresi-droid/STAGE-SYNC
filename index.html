@@ -8,6 +8,7 @@
   <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <script src="https://unpkg.com/html5-qrcode"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 </head>
 <body class="bg-slate-950">
@@ -63,6 +64,8 @@
       const [category, setCategory] = useState("som");
       const [quantity, setQuantity] = useState("1");
       const [barcode, setBarcode] = useState("");
+      const [scannerOpen, setScannerOpen] = useState(false);
+      const [scannerTarget, setScannerTarget] = useState("create");
 
       const [editingItem, setEditingItem] = useState(null);
 
@@ -78,6 +81,67 @@
       const [scanMessage, setScanMessage] = useState("");
       const [syncMessage, setSyncMessage] = useState("");
       const statusSyncRef = useRef("");
+      const scannerRef = useRef(null);
+
+      async function stopBarcodeScanner() {
+        try {
+          if (scannerRef.current) {
+            await scannerRef.current.stop();
+            await scannerRef.current.clear();
+            scannerRef.current = null;
+          }
+        } catch (_) {}
+      }
+
+      async function openBarcodeScanner(target = "create") {
+        setScannerTarget(target);
+        setScannerOpen(true);
+      }
+
+      async function startBarcodeScanner() {
+        try {
+          if (!window.Html5Qrcode) {
+            setScanMessage("Biblioteca da câmera não foi carregada.");
+            setScannerOpen(false);
+            return;
+          }
+
+          if (scannerRef.current) {
+            await stopBarcodeScanner();
+          }
+
+          const html5QrCode = new Html5Qrcode("reader");
+          scannerRef.current = html5QrCode;
+
+          await html5QrCode.start(
+            { facingMode: "environment" },
+            {
+              fps: 10,
+              qrbox: { width: 280, height: 120 },
+              aspectRatio: 1.7778,
+            },
+            async (decodedText) => {
+              const code = normalizeCode(decodedText);
+              if (!code) return;
+
+              if (scannerTarget === "edit" && editingItem) {
+                setEditingItem((prev) => prev ? { ...prev, barcode: code } : prev);
+              } else {
+                setBarcode(code);
+              }
+
+              setScanMessage("Código lido pela câmera.");
+              setScannerOpen(false);
+              await stopBarcodeScanner();
+            },
+            () => {}
+          );
+        } catch (error) {
+          setScanMessage("Não foi possível abrir a câmera. Verifique a permissão do navegador.");
+          setScannerOpen(false);
+          await stopBarcodeScanner();
+        }
+      }
 
       function normalizeCode(value) {
         return String(value || "").trim();
@@ -219,6 +283,19 @@
         syncItemStatuses(items, events);
       }, [items, events, loading]);
 
+      useEffect(() => {
+        if (!scannerOpen) {
+          stopBarcodeScanner();
+          return;
+        }
+
+        const timeout = setTimeout(() => {
+          startBarcodeScanner();
+        }, 150);
+
+        return () => clearTimeout(timeout);
+      }, [scannerOpen, scannerTarget, editingItem]);
+
       function selectRole(nextRole) {
         setRole(nextRole);
         setScanCode("");
@@ -236,6 +313,7 @@
       }
 
       function switchUser() {
+        stopBarcodeScanner();
         setRole(null);
         setTab("patrimonio");
         setEventsView("lista");
@@ -249,6 +327,7 @@
         setOperatorView({ eventId: null, tab: "saida" });
         setScanCode("");
         setScanMessage("");
+        setScannerOpen(false);
       }
 
       function resetEventForm() {
@@ -346,6 +425,7 @@
         setItems(items.map((item) => (item.id === editingItem.id ? updatedItem : item)));
         setEditingItem(null);
         setScanMessage("");
+        setScannerOpen(false);
       }
 
       async function deleteItem(id) {
@@ -774,6 +854,31 @@
 
       return (
         <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 text-white p-4">
+          {scannerOpen && (
+            <div className="fixed inset-0 z-50 bg-black/80 p-4 flex items-center justify-center">
+              <div className="w-full max-w-md rounded-3xl border border-white/10 bg-slate-950 p-4 shadow-2xl">
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <div>
+                    <h3 className="text-lg font-semibold text-white">Escanear código de barras</h3>
+                    <p className="text-xs text-slate-400">Aponte a câmera para o código do item.</p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      setScannerOpen(false);
+                      await stopBarcodeScanner();
+                    }}
+                  >
+                    Fechar
+                  </Button>
+                </div>
+
+                <div id="reader" className="overflow-hidden rounded-2xl bg-black min-h-[260px]" />
+              </div>
+            </div>
+          )}
           <div className="mx-auto max-w-md">
             <div className="mb-4 rounded-3xl border border-white/10 bg-white/5 p-4 backdrop-blur">
               <div className="flex items-center justify-between gap-3">
@@ -853,6 +958,9 @@
                     </select>
                     <Input type="number" min="1" placeholder="Quantidade" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
                     <Input placeholder="Código de barras" value={barcode} onChange={(e) => setBarcode(e.target.value)} />
+                    <Button type="button" variant="outline" onClick={() => openBarcodeScanner("create")} className="w-full">
+                      Ler código pela câmera
+                    </Button>
                     {scanMessage && <p className="text-xs text-red-300">{scanMessage}</p>}
                     <Button type="button" onClick={addItem} className="w-full">Cadastrar</Button>
                   </div>
@@ -877,6 +985,9 @@
                       </select>
                       <Input type="number" min="1" value={editingItem.quantity} onChange={(e) => setEditingItem({ ...editingItem, quantity: e.target.value })} />
                       <Input value={editingItem.barcode} onChange={(e) => setEditingItem({ ...editingItem, barcode: e.target.value })} />
+                      <Button type="button" variant="outline" onClick={() => openBarcodeScanner("edit")} className="w-full">
+                        Ler código pela câmera
+                      </Button>
                       <div className="grid grid-cols-2 gap-3">
                         <Button onClick={updateItem}>Salvar</Button>
                         <Button variant="outline" onClick={() => setEditingItem(null)}>Cancelar</Button>
