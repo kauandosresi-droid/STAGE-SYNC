@@ -180,6 +180,7 @@
       const [lastScannedItem, setLastScannedItem] = useState(null);
       const [pendingScanCode, setPendingScanCode] = useState("");
       const [pendingItem, setPendingItem] = useState(null);
+      const [scannerTone, setScannerTone] = useState("idle");
 
       const [itemSearch, setItemSearch] = useState("");
       const [categoryFilter, setCategoryFilter] = useState("todos");
@@ -189,15 +190,29 @@
       const [eventStatusFilter, setEventStatusFilter] = useState("todos");
       const [operators, setOperators] = useState([]);
       const [operatorName, setOperatorName] = useState("");
-            const [operatorPassword, setOperatorPassword] = useState("");
+      const [operatorPassword, setOperatorPassword] = useState("");
       const [editingOperatorId, setEditingOperatorId] = useState(null);
       const [operatorLoginValue, setOperatorLoginValue] = useState("");
       const [operatorPasswordValue, setOperatorPasswordValue] = useState("");
       const [currentOperator, setCurrentOperator] = useState(null);
 
+      function playFeedback(type) {
+        try {
+          const nav = window.navigator;
+          if (nav && typeof nav.vibrate === "function") {
+            nav.vibrate(type === "error" ? [160, 80, 160] : [60]);
+          }
+        } catch {}
+      }
+
       function setFeedback(message = "", type = "info") {
         setScanMessage(message);
         setScanMessageType(type);
+        setScannerTone(type === "error" ? "error" : type === "success" ? "success" : "idle");
+        if (message) {
+          playFeedback(type);
+          window.setTimeout(() => setScannerTone("idle"), 450);
+        }
       }
 
       function setSystemMessage(message = "", type = "info") {
@@ -306,6 +321,12 @@
         if (event.finalizado) return { label: "Finalizado", badge: "text-emerald-200 bg-emerald-500/15 border border-emerald-400/20" };
         if (event.saidaConcluida) return { label: "Em andamento", badge: "text-blue-200 bg-blue-500/15 border border-blue-400/20" };
         return { label: "Programado", badge: "text-amber-200 bg-amber-500/15 border border-amber-400/20" };
+      }
+
+      function getLatestRecordForItem(event, barcode, type = "saida") {
+        const history = type === "saida" ? toArray(event?.saidaHistorico) : toArray(event?.entradaHistorico);
+        const matches = history.filter((record) => normalizeCode(record.barcode) === normalizeCode(barcode));
+        return matches.length ? matches[matches.length - 1] : null;
       }
 
       async function stopBarcodeScanner() {
@@ -978,6 +999,10 @@
         }
 
         const agora = new Date().toLocaleString("pt-BR");
+        const operatorMeta = {
+          operatorId: currentOperator?.id || null,
+          operatorName: currentOperator?.name || "Operador",
+        };
 
         if (operatorView.tab === "saida") {
           const alreadyDone = activeOperatorEvent.saidaConfirmados.includes(normalized);
@@ -991,7 +1016,7 @@
                     saidaConfirmados: [...event.saidaConfirmados, normalized],
                     saidaHistorico: [
                       ...event.saidaHistorico,
-                      { id: Date.now(), itemName: foundItem.name, barcode: foundItem.barcode, time: agora },
+                      { id: Date.now(), itemName: foundItem.name, barcode: foundItem.barcode, time: agora, ...operatorMeta },
                     ],
                   }
                 : event
@@ -1026,7 +1051,7 @@
                     entradaConfirmados: [...event.entradaConfirmados, normalized],
                     entradaHistorico: [
                       ...event.entradaHistorico,
-                      { id: Date.now(), itemName: foundItem.name, barcode: foundItem.barcode, time: agora },
+                      { id: Date.now(), itemName: foundItem.name, barcode: foundItem.barcode, time: agora, ...operatorMeta },
                     ],
                   }
                 : event
@@ -1252,7 +1277,7 @@
                 <div className="relative">
                   <div id="reader" className="min-h-[300px] rounded-2xl bg-black" />
                   <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                    <div className="relative h-[220px] w-[220px] overflow-hidden rounded-xl border-2 border-green-400">
+                    <div className={`relative h-[220px] w-[220px] overflow-hidden rounded-xl border-2 ${scannerTone === "error" ? "border-red-400" : scannerTone === "success" ? "border-emerald-400" : scannerTone === "warning" ? "border-amber-400" : "border-green-400"}`}>
                       <div className="animate-scan absolute left-0 right-0 h-[2px] bg-green-400" />
                     </div>
                   </div>
@@ -1315,9 +1340,7 @@
                   <button type="button" onClick={() => setTab("eventos")} className={`rounded-2xl px-4 py-2.5 text-sm transition ${tab === "eventos" ? "bg-white text-slate-950" : "border border-white/10 bg-transparent text-slate-300 hover:bg-white/5"}`}>
                     Eventos
                   </button>
-                  <button type="button" onClick={() => setTab("cadastro")} className={`rounded-2xl px-4 py-2.5 text-sm transition ${tab === "cadastro" ? "bg-white text-slate-950" : "border border-white/10 bg-transparent text-slate-300 hover:bg-white/5"}`}>
-                    Cadastro
-                  </button>
+                  
                   <button type="button" onClick={() => setTab("operadores")} className={`rounded-2xl px-4 py-2.5 text-sm transition ${tab === "operadores" ? "bg-white text-slate-950" : "border border-white/10 bg-transparent text-slate-300 hover:bg-white/5"}`}>
                     Operadores
                   </button>
@@ -1339,71 +1362,26 @@
               </div>
             )}
 
-            {role === "admin" && tab === "cadastro" && (
-              <Panel title="Cadastrar item" subtitle="Formulário simples para novo cadastro">
-                <div className="grid gap-3 md:grid-cols-2">
-                  <Input placeholder="Nome do item" value={name} onChange={(e) => setName(e.target.value)} />
-                  <Select value={category} onChange={(e) => setCategory(e.target.value)}>
-                    <option value="som" className="text-black">Som</option>
-                    <option value="luz" className="text-black">Luz</option>
-                    <option value="led" className="text-black">LED</option>
-                    <option value="estrutura" className="text-black">Estrutura</option>
-                  </Select>
-                  <Input type="number" min="1" placeholder="Quantidade" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
-                  <Input placeholder="Código de barras" value={barcode} onChange={(e) => setBarcode(e.target.value)} />
-                </div>
-                <div className="mt-3 flex flex-col gap-3 md:flex-row">
-                  <Button type="button" variant="outline" onClick={() => openBarcodeScanner("create")} className="w-full">Ler código pela câmera</Button>
-                  <Button type="button" onClick={addItem} className="w-full">Cadastrar item</Button>
-                </div>
-              </Panel>
-            )}
-
-            {role === "admin" && tab === "operadores" && (
+            {role === "admin" && tab === "patrimonio" && (
               <div className="space-y-4">
-                <Panel title={editingOperatorId ? "Editar operador" : "Cadastrar operador"} subtitle="Os operadores agora são salvos no Supabase">
-                  <div className="grid gap-3 md:grid-cols-3">
-                    <Input placeholder="Nome do operador" value={operatorName} onChange={(e) => setOperatorName(e.target.value)} />
-                    
-                    <Input type="password" placeholder="Senha" value={operatorPassword} onChange={(e) => setOperatorPassword(e.target.value)} />
+                <Panel title="Cadastrar item" subtitle="Adicionar novo item ao estoque">
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <Input placeholder="Nome do item" value={name} onChange={(e) => setName(e.target.value)} />
+                    <Select value={category} onChange={(e) => setCategory(e.target.value)}>
+                      <option value="som" className="text-black">Som</option>
+                      <option value="luz" className="text-black">Luz</option>
+                      <option value="led" className="text-black">LED</option>
+                      <option value="estrutura" className="text-black">Estrutura</option>
+                    </Select>
+                    <Input type="number" min="1" placeholder="Quantidade" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+                    <Input placeholder="Código de barras" value={barcode} onChange={(e) => setBarcode(e.target.value)} />
                   </div>
-                  <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
-                    <Button onClick={saveOperator}>{editingOperatorId ? "Salvar operador" : "Cadastrar operador"}</Button>
-                    <Button variant="outline" onClick={resetOperatorForm}>Limpar formulário</Button>
-                    <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-xs text-slate-400">
-                      O acesso do operador agora exige login e senha.
-                    </div>
+                  <div className="mt-3 flex flex-col gap-3 md:flex-row">
+                    <Button type="button" variant="outline" onClick={() => openBarcodeScanner("create")} className="w-full">Ler código pela câmera</Button>
+                    <Button type="button" onClick={addItem} className="w-full">Cadastrar item</Button>
                   </div>
                 </Panel>
 
-                {operators.length === 0 ? (
-                  <EmptyState title="Nenhum operador cadastrado" text="Cadastre pelo menos um operador para liberar o acesso operacional." />
-                ) : (
-                  <div className="space-y-3">
-                    {operators.map((operator) => (
-                      <div key={operator.id} className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-                        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                          <div>
-                            <p className="text-base font-semibold text-white">{operator.name}</p>
-                            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-400">
-                              <span>Login: {operator.login} (automático)</span>
-                              <span>Senha: {operator.password}</span>
-                            </div>
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            <Button size="sm" variant="outline" onClick={() => startEditOperator(operator)}>Editar</Button>
-                            <Button size="sm" variant="destructive" onClick={() => deleteOperator(operator.id)}>Excluir</Button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {role === "admin" && tab === "patrimonio" && (
-              <div className="space-y-4">
                 <Panel title="Estoque" subtitle="Busca e filtros em uma única linha">
                   <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                     <Input placeholder="Buscar item por nome ou código" value={itemSearch} onChange={(e) => setItemSearch(e.target.value)} />
@@ -1478,6 +1456,48 @@
                         </div>
                       );
                     })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {role === "admin" && tab === "operadores" && (
+              <div className="space-y-4">
+                <Panel title={editingOperatorId ? "Editar operador" : "Cadastrar operador"} subtitle="Os operadores agora são salvos no Supabase">
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <Input placeholder="Nome do operador" value={operatorName} onChange={(e) => setOperatorName(e.target.value)} />
+                    <Input type="password" placeholder="Senha" value={operatorPassword} onChange={(e) => setOperatorPassword(e.target.value)} />
+                  </div>
+                  <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+                    <Button onClick={saveOperator}>{editingOperatorId ? "Salvar operador" : "Cadastrar operador"}</Button>
+                    <Button variant="outline" onClick={resetOperatorForm}>Limpar formulário</Button>
+                    <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-xs text-slate-400">
+                      O login é gerado automaticamente a partir do nome.
+                    </div>
+                  </div>
+                </Panel>
+
+                {operators.length === 0 ? (
+                  <EmptyState title="Nenhum operador cadastrado" text="Cadastre pelo menos um operador para liberar o acesso operacional." />
+                ) : (
+                  <div className="space-y-3">
+                    {operators.map((operator) => (
+                      <div key={operator.id} className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                          <div>
+                            <p className="text-base font-semibold text-white">{operator.name}</p>
+                            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-400">
+                              <span>Login: {operator.login} (automático)</span>
+                              <span>Senha: {operator.password}</span>
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <Button size="sm" variant="outline" onClick={() => startEditOperator(operator)}>Editar</Button>
+                            <Button size="sm" variant="destructive" onClick={() => deleteOperator(operator.id)}>Excluir</Button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
@@ -1648,6 +1668,10 @@
                                       <div>
                                         <p className="text-white">{i.name} ({i.category}) - {i.quantity} unidade{i.quantity > 1 ? "s" : ""}</p>
                                         <p className="text-slate-400">Código: {i.barcode}</p>
+                                        {(() => {
+                                          const registro = getLatestRecordForItem(activeOperatorEvent, i.barcode, operatorView.tab);
+                                          return registro?.operatorName ? <p className="text-slate-500">Última leitura por: {registro.operatorName}</p> : null;
+                                        })()}
                                       </div>
                                       <span className={confirmed ? "font-medium text-green-400" : "font-medium text-red-400"}>{confirmed ? "Lido" : "Pendente"}</span>
                                     </div>
@@ -1712,14 +1736,14 @@
                                     <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-3">
                                       <p className="mb-2 text-sm font-medium text-white">Registros de saída</p>
                                       {ev.saidaHistorico.length === 0 ? <p className="text-xs text-slate-400">Sem registros</p> : ev.saidaHistorico.map((registro) => (
-                                        <p key={registro.id} className="text-xs text-slate-300">{registro.itemName} • {registro.time}</p>
+                                        <p key={registro.id} className="text-xs text-slate-300">{registro.itemName} • {registro.time} • {registro.operatorName || "Operador"}</p>
                                       ))}
                                     </div>
 
                                     <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-3">
                                       <p className="mb-2 text-sm font-medium text-white">Registros de entrada</p>
                                       {ev.entradaHistorico.length === 0 ? <p className="text-xs text-slate-400">Sem registros</p> : ev.entradaHistorico.map((registro) => (
-                                        <p key={registro.id} className="text-xs text-slate-300">{registro.itemName} • {registro.time}</p>
+                                        <p key={registro.id} className="text-xs text-slate-300">{registro.itemName} • {registro.time} • {registro.operatorName || "Operador"}</p>
                                       ))}
                                     </div>
                                   </div>
