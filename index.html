@@ -8,7 +8,7 @@
   <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
-  <script src="https://unpkg.com/@zxing/library@latest"></script>
+  <script src="https://unpkg.com/html5-qrcode"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 </head>
 <body class="bg-slate-950">
@@ -86,10 +86,13 @@
       async function stopBarcodeScanner() {
         try {
           if (scannerRef.current) {
-            scannerRef.current.reset();
+            await scannerRef.current.stop();
+            await scannerRef.current.clear();
             scannerRef.current = null;
           }
-        } catch (_) {}
+        } catch (e) {
+          console.warn("Erro ao parar scanner", e);
+        }
       }
 
       function openBarcodeScanner(target = "create") {
@@ -99,38 +102,42 @@
 
       async function startBarcodeScanner() {
         try {
-          const codeReader = new ZXing.BrowserMultiFormatReader();
-          scannerRef.current = codeReader;
-
-          const videoInputDevices = await codeReader.listVideoInputDevices();
-          const backCamera =
-            videoInputDevices.find((d) => (d.label || "").toLowerCase().includes("back")) ||
-            videoInputDevices.find((d) => (d.label || "").toLowerCase().includes("traseira")) ||
-            videoInputDevices[0];
-
-          if (!backCamera) {
-            throw new Error("Nenhuma câmera encontrada");
+          if (!window.Html5Qrcode) {
+            setScanMessage("Scanner não carregado.");
+            setScannerOpen(false);
+            return;
           }
 
-          await codeReader.decodeFromVideoDevice(backCamera.deviceId, "reader", (result) => {
-            if (!result) return;
+          const html5QrCode = new Html5Qrcode("reader");
+          scannerRef.current = html5QrCode;
 
-            const code = normalizeCode(result.text);
-            if (!code) return;
+          await html5QrCode.start(
+            { facingMode: "environment" },
+            {
+              fps: 10,
+              qrbox: { width: 250, height: 250 },
+              formatsToSupport: [window.Html5QrcodeSupportedFormats.QR_CODE]
+            },
+            async (decodedText) => {
+              const code = normalizeCode(decodedText);
+              if (!code) return;
 
-            if (scannerTarget === "edit" && editingItem) {
-              setEditingItem((prev) => (prev ? { ...prev, barcode: code } : prev));
-            } else {
-              setBarcode(code);
-            }
+              if (scannerTarget === "edit" && editingItem) {
+                setEditingItem((prev) => prev ? { ...prev, barcode: code } : prev);
+              } else {
+                setBarcode(code);
+              }
 
-            setScanMessage("Código lido com sucesso.");
-            setScannerOpen(false);
-            codeReader.reset();
-            scannerRef.current = null;
-          });
+              setScanMessage("QR Code lido com sucesso.");
+              setScannerOpen(false);
+              await html5QrCode.stop();
+              await html5QrCode.clear();
+              scannerRef.current = null;
+            },
+            () => {}
+          );
         } catch (error) {
-          setScanMessage("Erro ao iniciar câmera ou ler código de barras.");
+          setScanMessage("Erro ao abrir câmera para QR Code.");
           setScannerOpen(false);
           await stopBarcodeScanner();
         }
@@ -852,7 +859,7 @@
               <div className="w-full max-w-md rounded-3xl border border-white/10 bg-slate-950 p-4 shadow-2xl">
                 <div className="flex items-center justify-between gap-3 mb-3">
                   <div>
-                    <h3 className="text-lg font-semibold text-white">Escanear código de barras</h3>
+                    <h3 className="text-lg font-semibold text-white">Escanear QR Code</h3>
                     <p className="text-xs text-slate-400">Centralize o código dentro da área e aproxime devagar.</p>
                   </div>
                   <Button
