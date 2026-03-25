@@ -114,11 +114,22 @@
           scannerRef.current = html5QrCode;
 
           await html5QrCode.start(
-            { facingMode: "environment" },
+            { facingMode: { exact: "environment" } },
             {
-              fps: 10,
-              qrbox: { width: 280, height: 120 },
+              fps: 15,
+              qrbox: { width: 320, height: 160 },
               aspectRatio: 1.7778,
+              disableFlip: true,
+              rememberLastUsedCamera: true,
+              formatsToSupport: [
+                Html5QrcodeSupportedFormats.EAN_13,
+                Html5QrcodeSupportedFormats.EAN_8,
+                Html5QrcodeSupportedFormats.UPC_A,
+                Html5QrcodeSupportedFormats.UPC_E,
+                Html5QrcodeSupportedFormats.CODE_128,
+                Html5QrcodeSupportedFormats.CODE_39,
+                Html5QrcodeSupportedFormats.ITF,
+              ],
             },
             async (decodedText) => {
               const code = normalizeCode(decodedText);
@@ -137,9 +148,49 @@
             () => {}
           );
         } catch (error) {
-          setScanMessage("Não foi possível abrir a câmera. Verifique a permissão do navegador.");
-          setScannerOpen(false);
-          await stopBarcodeScanner();
+          try {
+            const html5QrCode = new Html5Qrcode("reader");
+            scannerRef.current = html5QrCode;
+
+            await html5QrCode.start(
+              { facingMode: "environment" },
+              {
+                fps: 15,
+                qrbox: { width: 320, height: 160 },
+                aspectRatio: 1.7778,
+                disableFlip: true,
+                rememberLastUsedCamera: true,
+                formatsToSupport: [
+                  Html5QrcodeSupportedFormats.EAN_13,
+                  Html5QrcodeSupportedFormats.EAN_8,
+                  Html5QrcodeSupportedFormats.UPC_A,
+                  Html5QrcodeSupportedFormats.UPC_E,
+                  Html5QrcodeSupportedFormats.CODE_128,
+                  Html5QrcodeSupportedFormats.CODE_39,
+                  Html5QrcodeSupportedFormats.ITF,
+                ],
+              },
+              async (decodedText) => {
+                const code = normalizeCode(decodedText);
+                if (!code) return;
+
+                if (scannerTarget === "edit" && editingItem) {
+                  setEditingItem((prev) => prev ? { ...prev, barcode: code } : prev);
+                } else {
+                  setBarcode(code);
+                }
+
+                setScanMessage("Código lido pela câmera.");
+                setScannerOpen(false);
+                await stopBarcodeScanner();
+              },
+              () => {}
+            );
+          } catch (_) {
+            setScanMessage("Não foi possível ler código de barras pela câmera. Tente aproximar mais, melhorar a luz ou usar o código manualmente.");
+            setScannerOpen(false);
+            await stopBarcodeScanner();
+          }
         }
       }
 
@@ -860,7 +911,7 @@
                 <div className="flex items-center justify-between gap-3 mb-3">
                   <div>
                     <h3 className="text-lg font-semibold text-white">Escanear código de barras</h3>
-                    <p className="text-xs text-slate-400">Aponte a câmera para o código do item.</p>
+                    <p className="text-xs text-slate-400">Aponte a câmera para o código de barras, com boa luz e ocupando boa parte da área de leitura.</p>
                   </div>
                   <Button
                     type="button"
@@ -876,6 +927,11 @@
                 </div>
 
                 <div id="reader" className="overflow-hidden rounded-2xl bg-black min-h-[260px]" />
+                <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 p-3 text-xs text-slate-300 space-y-1">
+                  <p>• Teste com a câmera traseira</p>
+                  <p>• Aproxime e afaste devagar até o código ficar nítido</p>
+                  <p>• Prefira boa iluminação</p>
+                </div>
               </div>
             </div>
           )}
