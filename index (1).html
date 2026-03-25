@@ -1,0 +1,1139 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>StageSync</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body class="bg-slate-950">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useEffect, useMemo, useState } = React;
+
+    const SUPABASE_URL = "https://mwmewkhowltrwyboakvl.supabase.co";
+    const SUPABASE_ANON_KEY = "sb_publishable_l-xO9VFLWY5IA1D5pM56-w_dMqM41e9";
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    function Input(props) {
+      const extra = props.className || "";
+      return (
+        <input
+          {...props}
+          className={`w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white outline-none placeholder:text-slate-500 ${extra}`}
+        />
+      );
+    }
+
+    function Button({ children, className = "", variant = "default", size = "default", ...props }) {
+      const base = "inline-flex items-center justify-center rounded-2xl font-medium transition disabled:opacity-50 disabled:cursor-not-allowed";
+      const sizes = {
+        default: "px-4 py-2 text-sm",
+        sm: "px-3 py-2 text-xs"
+      };
+      const variants = {
+        default: "bg-blue-600 hover:bg-blue-500 text-white",
+        outline: "border border-white/10 bg-white/5 text-white hover:bg-white/10",
+        secondary: "bg-emerald-600 hover:bg-emerald-500 text-white",
+        destructive: "bg-red-600 hover:bg-red-500 text-white"
+      };
+      return (
+        <button {...props} className={`${base} ${sizes[size] || sizes.default} ${variants[variant] || variants.default} ${className}`}>
+          {children}
+        </button>
+      );
+    }
+
+    function Card({ children, className = "" }) {
+      return <div className={`rounded-3xl border border-white/10 bg-white/5 backdrop-blur ${className}`}>{children}</div>;
+    }
+
+    function CardContent({ children, className = "" }) {
+      return <div className={`p-4 ${className}`}>{children}</div>;
+    }
+
+    function App() {
+      const [role, setRole] = useState(null);
+      const [tab, setTab] = useState("patrimonio");
+      const [eventsView, setEventsView] = useState("lista");
+
+      const [items, setItems] = useState([]);
+      const [events, setEvents] = useState([]);
+      const [loading, setLoading] = useState(true);
+
+      const [name, setName] = useState("");
+      const [category, setCategory] = useState("som");
+      const [quantity, setQuantity] = useState("1");
+      const [barcode, setBarcode] = useState("");
+
+      const [editingItem, setEditingItem] = useState(null);
+      const [maintenanceIds, setMaintenanceIds] = useState(() => {
+        try { return JSON.parse(localStorage.getItem("stagesync_maintenance_ids") || "[]"); }
+        catch { return []; }
+      });
+
+      const [eventName, setEventName] = useState("");
+      const [eventDate, setEventDate] = useState("");
+      const [selectedItems, setSelectedItems] = useState([]);
+
+      const [operatorView, setOperatorView] = useState({ eventId: null, tab: "saida" });
+      const [scanCode, setScanCode] = useState("");
+      const [scanMessage, setScanMessage] = useState("");
+      const [syncMessage, setSyncMessage] = useState("");
+      const [errorLog, setErrorLog] = useState([]);
+      const [errorPanelOpen, setErrorPanelOpen] = useState(false);
+
+      function addErrorEntry(source, error, details = "") {
+        const message = typeof error === "string"
+          ? error
+          : error?.message || error?.toString?.() || "Erro desconhecido";
+
+        const entry = {
+          id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          source,
+          message,
+          details,
+          time: new Date().toLocaleString("pt-BR"),
+        };
+
+        setErrorLog((prev) => [entry, ...prev].slice(0, 100));
+      }
+
+      function clearErrorLog() {
+        setErrorLog([]);
+      }
+
+      useEffect(() => {
+        const previousConsoleError = console.error;
+
+        const handleWindowError = (event) => {
+          addErrorEntry(
+            "window.error",
+            event?.error || event?.message || "Erro de execução",
+            event?.filename
+              ? `${event.filename}${event.lineno ? `:${event.lineno}` : ""}`
+              : ""
+          );
+        };
+
+        const handleUnhandledRejection = (event) => {
+          addErrorEntry("unhandledrejection", event?.reason || "Promise rejeitada sem tratamento");
+        };
+
+        console.error = (...args) => {
+          previousConsoleError(...args);
+          const formatted = args.map((arg) => {
+            if (typeof arg === "string") return arg;
+            try { return JSON.stringify(arg); } catch { return String(arg); }
+          }).join(" | ");
+          addErrorEntry("console.error", formatted);
+        };
+
+        window.addEventListener("error", handleWindowError);
+        window.addEventListener("unhandledrejection", handleUnhandledRejection);
+
+        return () => {
+          console.error = previousConsoleError;
+          window.removeEventListener("error", handleWindowError);
+          window.removeEventListener("unhandledrejection", handleUnhandledRejection);
+        };
+      }, []);
+
+      useEffect(() => {
+        localStorage.setItem("stagesync_maintenance_ids", JSON.stringify(maintenanceIds));
+      }, [maintenanceIds]);
+
+      function toArray(value) {
+        if (Array.isArray(value)) return value;
+        if (value == null || value === "") return [];
+        try { return JSON.parse(value); } catch { return []; }
+      }
+
+      function normalizeEvent(event) {
+        return {
+          ...event,
+          items: toArray(event.items),
+          saidaConfirmados: toArray(event.saidaConfirmados),
+          entradaConfirmados: toArray(event.entradaConfirmados),
+          saidaHistorico: toArray(event.saidaHistorico),
+          entradaHistorico: toArray(event.entradaHistorico),
+          saidaConcluida: !!event.saidaConcluida,
+          finalizado: !!event.finalizado,
+          saidaConcluidaEm: event.saidaConcluidaEm || "",
+          entradaConcluidaEm: event.entradaConcluidaEm || "",
+        };
+      }
+
+      async function fetchAll(showLoading = true) {
+        if (showLoading) setLoading(true);
+
+        try {
+          const [{ data: itemsData, error: itemsError }, { data: eventsData, error: eventsError }] =
+            await Promise.all([
+              supabase.from("items").select("*").order("id", { ascending: false }),
+              supabase.from("events").select("*").order("id", { ascending: false }),
+            ]);
+
+          if (itemsError) {
+            setSyncMessage("Erro ao carregar itens.");
+            addErrorEntry("supabase.items.select", itemsError);
+          } else {
+            setItems(itemsData || []);
+          }
+
+          if (eventsError) {
+            setSyncMessage("Erro ao carregar eventos.");
+            addErrorEntry("supabase.events.select", eventsError);
+          } else {
+            setEvents((eventsData || []).map(normalizeEvent));
+          }
+
+          if (!itemsError && !eventsError) setSyncMessage("");
+        } catch (error) {
+          setSyncMessage("Erro ao sincronizar com Supabase.");
+          addErrorEntry("fetchAll", error);
+        } finally {
+          if (showLoading) setLoading(false);
+        }
+      }
+
+      useEffect(() => {
+        fetchAll();
+        const interval = setInterval(() => fetchAll(false), 4000);
+        return () => clearInterval(interval);
+      }, []);
+
+      function selectRole(nextRole) {
+        setRole(nextRole);
+        setScanCode("");
+        setScanMessage("");
+
+        if (nextRole === "operador") {
+          setTab("eventos");
+          setEventsView("lista");
+        }
+
+        if (nextRole === "admin") {
+          setTab("patrimonio");
+          setEventsView("lista");
+        }
+      }
+
+      function normalizeCode(value) {
+        return String(value || "").trim();
+      }
+
+      async function addItem() {
+        if (!name || !category || !quantity || !barcode) return;
+
+        const normalizedName = String(name).trim();
+        const normalizedBarcode = normalizeCode(barcode);
+        const barcodeExists = items.some((item) => normalizeCode(item.barcode) === normalizedBarcode);
+
+        if (barcodeExists) {
+          setScanMessage("Já existe um item com este código de barras.");
+          return;
+        }
+
+        const newItem = {
+          name: normalizedName,
+          category,
+          quantity: Number(quantity),
+          barcode: normalizedBarcode,
+        };
+
+        const { data, error } = await supabase.from("items").insert([newItem]).select().single();
+
+        if (error) {
+          setScanMessage("Erro ao cadastrar item.");
+          addErrorEntry("supabase.items.insert", error);
+          return;
+        }
+
+        setItems((prev) => [data || { ...newItem, id: crypto.randomUUID() }, ...prev]);
+        setName("");
+        setCategory("som");
+        setQuantity("1");
+        setBarcode("");
+        setScanMessage("");
+      }
+
+      async function updateItem() {
+        if (!editingItem) return;
+
+        const normalizedBarcode = normalizeCode(editingItem.barcode);
+        const barcodeExists = items.some(
+          (item) => item.id !== editingItem.id && normalizeCode(item.barcode) === normalizedBarcode
+        );
+
+        if (barcodeExists) {
+          setScanMessage("Já existe um item com este código de barras.");
+          return;
+        }
+
+        const updatedItem = {
+          ...editingItem,
+          name: String(editingItem.name || "").trim(),
+          quantity: Number(editingItem.quantity),
+          barcode: normalizedBarcode,
+        };
+
+        const { error } = await supabase
+          .from("items")
+          .update({
+            name: updatedItem.name,
+            category: updatedItem.category,
+            quantity: updatedItem.quantity,
+            barcode: updatedItem.barcode,
+          })
+          .eq("id", updatedItem.id);
+
+        if (error) {
+          setScanMessage("Erro ao atualizar item.");
+          addErrorEntry("supabase.items.update", error);
+          return;
+        }
+
+        setItems(items.map((item) => (item.id === editingItem.id ? updatedItem : item)));
+        setEditingItem(null);
+        setScanMessage("");
+      }
+
+      async function deleteItem(id) {
+        const { error } = await supabase.from("items").delete().eq("id", id);
+
+        if (error) {
+          setScanMessage("Erro ao excluir item.");
+          addErrorEntry("supabase.items.delete", error);
+          return;
+        }
+
+        setItems(items.filter((item) => item.id !== id));
+        setSelectedItems(selectedItems.filter((item) => item.id !== id));
+        setMaintenanceIds(maintenanceIds.filter((itemId) => itemId !== id));
+
+        const updatedEvents = events.map((event) => ({
+          ...event,
+          items: event.items.filter((item) => item.id !== id),
+          saidaConfirmados: event.saidaConfirmados.filter((code) => {
+            const found = event.items.find((item) => item.barcode === code);
+            return found && found.id !== id;
+          }),
+          entradaConfirmados: event.entradaConfirmados.filter((code) => {
+            const found = event.items.find((item) => item.barcode === code);
+            return found && found.id !== id;
+          }),
+        }));
+
+        setEvents(updatedEvents);
+
+        const syncResults = await Promise.all(
+          updatedEvents.map((event) =>
+            supabase
+              .from("events")
+              .update({
+                items: event.items,
+                saidaConfirmados: event.saidaConfirmados,
+                entradaConfirmados: event.entradaConfirmados,
+              })
+              .eq("id", event.id)
+          )
+        );
+
+        syncResults.forEach((result) => {
+          if (result.error) addErrorEntry("supabase.events.syncAfterDelete", result.error);
+        });
+      }
+
+      function isItemAvailable(item) {
+        const inMaintenance = maintenanceIds.includes(item.id);
+        const inEvent = events.some(
+          (event) => !event.finalizado && event.items.some((i) => i.id === item.id)
+        );
+        return !inMaintenance && !inEvent;
+      }
+
+      function toggleItem(item) {
+        const exists = selectedItems.find((i) => i.id === item.id);
+
+        if (!exists && !isItemAvailable(item)) {
+          setScanMessage("Item indisponível (em uso ou manutenção).");
+          return;
+        }
+
+        if (exists) {
+          setSelectedItems(selectedItems.filter((i) => i.id !== item.id));
+        } else {
+          setSelectedItems([...selectedItems, item]);
+        }
+      }
+
+      async function addEvent() {
+        if (!eventName || !eventDate) return;
+
+        const newEvent = {
+          name: eventName,
+          date: eventDate,
+          items: selectedItems,
+          saidaConfirmados: [],
+          entradaConfirmados: [],
+          saidaConcluida: false,
+          finalizado: false,
+          saidaConcluidaEm: "",
+          entradaConcluidaEm: "",
+          saidaHistorico: [],
+          entradaHistorico: [],
+        };
+
+        const { data, error } = await supabase.from("events").insert([newEvent]).select().single();
+
+        if (error) {
+          setScanMessage("Erro ao cadastrar evento.");
+          addErrorEntry("supabase.events.insert", error);
+          return;
+        }
+
+        setEvents([normalizeEvent(data || { ...newEvent, id: Date.now() }), ...events]);
+        setEventName("");
+        setEventDate("");
+        setSelectedItems([]);
+        setEventsView("lista");
+        setScanMessage("");
+      }
+
+      const activeOperatorEvent = useMemo(
+        () => events.find((event) => event.id === operatorView.eventId) || null,
+        [events, operatorView.eventId]
+      );
+
+      async function saveEventUpdate(eventId, patch) {
+        const { error } = await supabase.from("events").update(patch).eq("id", eventId);
+        if (error) addErrorEntry("supabase.events.update", error);
+        return !error;
+      }
+
+      async function processBarcodeScan() {
+        if (!activeOperatorEvent) return;
+
+        const normalized = normalizeCode(scanCode);
+        if (!normalized) return;
+
+        const foundItem = activeOperatorEvent.items.find(
+          (item) => normalizeCode(item.barcode) === normalized
+        );
+
+        if (!foundItem) {
+          setScanMessage("Código não pertence a este evento.");
+          return;
+        }
+
+        const agora = new Date().toLocaleString("pt-BR");
+
+        if (operatorView.tab === "saida") {
+          const alreadyDone = activeOperatorEvent.saidaConfirmados.includes(normalized);
+          if (alreadyDone) {
+            setScanMessage(`Saída já confirmada para: ${foundItem.name}`);
+          } else {
+            const updatedEvents = events.map((event) =>
+              event.id === activeOperatorEvent.id
+                ? {
+                    ...event,
+                    saidaConfirmados: [...event.saidaConfirmados, normalized],
+                    saidaHistorico: [
+                      ...event.saidaHistorico,
+                      {
+                        id: Date.now(),
+                        itemName: foundItem.name,
+                        barcode: foundItem.barcode,
+                        time: agora,
+                      },
+                    ],
+                  }
+                : event
+            );
+
+            const updatedEvent = updatedEvents.find((e) => e.id === activeOperatorEvent.id);
+            const ok = await saveEventUpdate(updatedEvent.id, {
+              saidaConfirmados: updatedEvent.saidaConfirmados,
+              saidaHistorico: updatedEvent.saidaHistorico,
+            });
+
+            if (!ok) {
+              setScanMessage("Erro ao salvar saída.");
+              return;
+            }
+
+            setEvents(updatedEvents);
+            setScanMessage(`Saída confirmada: ${foundItem.name}`);
+          }
+        }
+
+        if (operatorView.tab === "entrada") {
+          const alreadyDone = activeOperatorEvent.entradaConfirmados.includes(normalized);
+          if (alreadyDone) {
+            setScanMessage(`Entrada já confirmada para: ${foundItem.name}`);
+          } else {
+            const updatedEvents = events.map((event) =>
+              event.id === activeOperatorEvent.id
+                ? {
+                    ...event,
+                    entradaConfirmados: [...event.entradaConfirmados, normalized],
+                    entradaHistorico: [
+                      ...event.entradaHistorico,
+                      {
+                        id: Date.now(),
+                        itemName: foundItem.name,
+                        barcode: foundItem.barcode,
+                        time: agora,
+                      },
+                    ],
+                  }
+                : event
+            );
+
+            const updatedEvent = updatedEvents.find((e) => e.id === activeOperatorEvent.id);
+            const totalItens = updatedEvent ? updatedEvent.items.length : 0;
+            const totalEntrada = updatedEvent ? updatedEvent.entradaConfirmados.length : 0;
+
+            if (totalItens > 0 && totalEntrada === totalItens) {
+              const finalEvents = updatedEvents.map((event) =>
+                event.id === activeOperatorEvent.id
+                  ? {
+                      ...event,
+                      finalizado: true,
+                      entradaConcluidaEm: agora,
+                    }
+                  : event
+              );
+
+              const finalEvent = finalEvents.find((e) => e.id === activeOperatorEvent.id);
+              const ok = await saveEventUpdate(finalEvent.id, {
+                entradaConfirmados: finalEvent.entradaConfirmados,
+                entradaHistorico: finalEvent.entradaHistorico,
+                finalizado: true,
+                entradaConcluidaEm: finalEvent.entradaConcluidaEm,
+              });
+
+              if (!ok) {
+                setScanMessage("Erro ao finalizar entrada.");
+                return;
+              }
+
+              setEvents(finalEvents);
+              setOperatorView({ eventId: null, tab: "saida" });
+              setScanMessage("Evento finalizado! ✅");
+            } else {
+              const ok = await saveEventUpdate(updatedEvent.id, {
+                entradaConfirmados: updatedEvent.entradaConfirmados,
+                entradaHistorico: updatedEvent.entradaHistorico,
+              });
+
+              if (!ok) {
+                setScanMessage("Erro ao salvar entrada.");
+                return;
+              }
+
+              setEvents(updatedEvents);
+              setScanMessage(`Entrada confirmada: ${foundItem.name}`);
+            }
+          }
+        }
+
+        setScanCode("");
+      }
+
+      function isConfirmed(event, item, currentTab) {
+        if (currentTab === "saida") return event.saidaConfirmados.includes(item.barcode);
+        return event.entradaConfirmados.includes(item.barcode);
+      }
+
+      function getItemStatus(item) {
+        if (maintenanceIds.includes(item.id)) {
+          return {
+            label: "Em manutenção",
+            detail: "Parado para manutenção",
+            badge: "text-yellow-700 bg-yellow-100",
+          };
+        }
+
+        const activeEvent = events.find(
+          (event) => !event.finalizado && event.items.some((eventItem) => eventItem.id === item.id)
+        );
+
+        if (activeEvent) {
+          return {
+            label: "Em uso",
+            detail: `Evento: ${activeEvent.name} • Etapa: ${activeEvent.saidaConcluida ? "entrada" : "saída"}`,
+            badge: activeEvent.saidaConcluida
+              ? "text-purple-700 bg-purple-100"
+              : "text-blue-700 bg-blue-100",
+          };
+        }
+
+        return {
+          label: "Disponível",
+          detail: "Livre para uso",
+          badge: "text-green-700 bg-green-100",
+        };
+      }
+
+      function toggleMaintenance(itemId) {
+        const activeEventUsingItem = events.some(
+          (event) => !event.finalizado && event.items.some((item) => item.id === itemId)
+        );
+
+        if (activeEventUsingItem) {
+          setScanMessage("Não é possível colocar em manutenção um item que está em uso.");
+          return;
+        }
+
+        setMaintenanceIds((prev) =>
+          prev.includes(itemId) ? prev.filter((id) => id !== itemId) : [...prev, itemId]
+        );
+      }
+
+      if (loading) {
+        return (
+          <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 text-white flex items-center justify-center p-4">
+            <div className="rounded-2xl border border-white/10 bg-white/5 px-5 py-4 text-sm text-slate-300">
+              Carregando dados...
+            </div>
+          </div>
+        );
+      }
+
+      if (!role) {
+        return (
+          <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 text-white flex items-center justify-center p-4">
+            <div className="w-full max-w-md">
+              <div className="mb-6 text-center">
+                <div className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/10 px-4 py-2 backdrop-blur">
+                  <span className="text-sm font-medium tracking-[0.2em] uppercase text-blue-200">StageSync</span>
+                </div>
+                <h1 className="mt-4 text-4xl font-bold tracking-tight">Controle de eventos e patrimônio</h1>
+                <p className="mt-3 text-sm leading-6 text-slate-300">
+                  Gestão rápida para equipe técnica, conferência de saída e entrada, e visão clara do patrimônio.
+                </p>
+              </div>
+
+              <div className="grid gap-4">
+                <button
+                  type="button"
+                  onClick={() => selectRole("admin")}
+                  className="group rounded-3xl border border-blue-400/20 bg-gradient-to-r from-blue-600 to-cyan-500 p-[1px] text-left shadow-2xl shadow-blue-950/40 transition hover:scale-[1.01]"
+                >
+                  <div className="rounded-3xl bg-slate-950/90 p-5">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-lg font-semibold text-white">Entrar como Admin</p>
+                        <p className="mt-1 text-sm text-slate-300">
+                          Cadastre itens, organize eventos e acompanhe a operação.
+                        </p>
+                      </div>
+                      <div className="rounded-2xl bg-blue-500/15 px-3 py-2 text-xs font-semibold text-blue-200">
+                        ADMIN
+                      </div>
+                    </div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => selectRole("operador")}
+                  className="group rounded-3xl border border-emerald-400/20 bg-gradient-to-r from-emerald-500 to-teal-500 p-[1px] text-left shadow-2xl shadow-emerald-950/30 transition hover:scale-[1.01]"
+                >
+                  <div className="rounded-3xl bg-slate-950/90 p-5">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-lg font-semibold text-white">Entrar como Operador</p>
+                        <p className="mt-1 text-sm text-slate-300">
+                          Faça leitura dos itens, controle saída e entrada.
+                        </p>
+                      </div>
+                      <div className="rounded-2xl bg-emerald-500/15 px-3 py-2 text-xs font-semibold text-emerald-200">
+                        OPERAÇÃO
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 text-white p-4">
+          <div className="mx-auto max-w-md">
+            <div className="mb-4 rounded-3xl border border-white/10 bg-white/5 p-4 backdrop-blur">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.22em] text-blue-200">StageSync</p>
+                  <h1 className="mt-1 text-2xl font-bold tracking-tight">
+                    {role === "admin" ? "Painel administrativo" : "Painel do operador"}
+                  </h1>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-white/10 px-3 py-2 text-xs font-medium text-slate-200">
+                  {role}
+                </div>
+              </div>
+            </div>
+
+            {syncMessage && (
+              <div className="mb-4 rounded-2xl border border-amber-400/20 bg-amber-500/10 px-4 py-3 text-xs text-amber-100">
+                {syncMessage}
+              </div>
+            )}
+
+            {role === "admin" && (
+              <div className="mb-4 grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setTab("patrimonio")}
+                  className={`rounded-2xl border p-3 text-left transition ${
+                    tab === "patrimonio"
+                      ? "border-blue-400/30 bg-blue-500/15 text-white"
+                      : "border-white/10 bg-white/5 text-slate-300"
+                  }`}
+                >
+                  <p className="text-sm font-semibold">Patrimônio</p>
+                  <p className="mt-1 text-xs text-slate-400">Itens e status</p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTab("eventos")}
+                  className={`rounded-2xl border p-3 text-left transition ${
+                    tab === "eventos"
+                      ? "border-emerald-400/30 bg-emerald-500/15 text-white"
+                      : "border-white/10 bg-white/5 text-slate-300"
+                  }`}
+                >
+                  <p className="text-sm font-semibold">Eventos</p>
+                  <p className="mt-1 text-xs text-slate-400">Programação e histórico</p>
+                </button>
+              </div>
+            )}
+
+            {role === "admin" && tab === "patrimonio" && (
+              <div className="space-y-4">
+                <div className="rounded-3xl border border-white/10 bg-white/5 p-4 backdrop-blur">
+                  <div className="mb-3">
+                    <h2 className="text-lg font-semibold">Cadastrar item</h2>
+                  </div>
+                  <div className="space-y-3">
+                    <Input placeholder="Nome do item" value={name} onChange={(e) => setName(e.target.value)} />
+                    <select
+                      className="w-full rounded-xl border border-white/10 bg-white/5 p-2 text-white"
+                      value={category}
+                      onChange={(e) => setCategory(e.target.value)}
+                    >
+                      <option value="som" className="text-black">Som</option>
+                      <option value="luz" className="text-black">Luz</option>
+                      <option value="led" className="text-black">LED</option>
+                      <option value="estrutura" className="text-black">Estrutura</option>
+                    </select>
+                    <Input type="number" min="1" placeholder="Quantidade" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+                    <Input placeholder="Código de barras" value={barcode} onChange={(e) => setBarcode(e.target.value)} />
+                    {scanMessage && <p className="text-xs text-red-300">{scanMessage}</p>}
+                    <Button type="button" onClick={addItem} className="w-full">Cadastrar</Button>
+                  </div>
+                </div>
+
+                {editingItem && (
+                  <div className="rounded-3xl border border-white/10 bg-white/5 p-4 backdrop-blur">
+                    <div className="mb-3">
+                      <h2 className="text-lg font-semibold">Editar item</h2>
+                    </div>
+                    <div className="space-y-3">
+                      <Input value={editingItem.name} onChange={(e) => setEditingItem({ ...editingItem, name: e.target.value })} />
+                      <select
+                        className="w-full rounded-xl border border-white/10 bg-white/5 p-2 text-white"
+                        value={editingItem.category}
+                        onChange={(e) => setEditingItem({ ...editingItem, category: e.target.value })}
+                      >
+                        <option value="som" className="text-black">Som</option>
+                        <option value="luz" className="text-black">Luz</option>
+                        <option value="led" className="text-black">LED</option>
+                        <option value="estrutura" className="text-black">Estrutura</option>
+                      </select>
+                      <Input type="number" min="1" value={editingItem.quantity} onChange={(e) => setEditingItem({ ...editingItem, quantity: e.target.value })} />
+                      <Input value={editingItem.barcode} onChange={(e) => setEditingItem({ ...editingItem, barcode: e.target.value })} />
+                      <div className="grid grid-cols-2 gap-3">
+                        <Button onClick={updateItem}>Salvar</Button>
+                        <Button variant="outline" onClick={() => setEditingItem(null)}>Cancelar</Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="rounded-3xl border border-white/10 bg-white/5 p-3 backdrop-blur overflow-hidden">
+                  {items.length === 0 ? (
+                    <div className="p-4 text-sm text-slate-400">Nenhum item catalogado ainda.</div>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-4 gap-2 rounded-2xl bg-white/5 p-3 text-[11px] uppercase tracking-wide text-slate-400">
+                        <span>Nome</span>
+                        <span>Categoria</span>
+                        <span>Qtd</span>
+                        <span>Status</span>
+                      </div>
+                      <div className="mt-2 space-y-2">
+                        {items.map((item) => {
+                          const status = getItemStatus(item);
+                          return (
+                            <div key={item.id} className="rounded-2xl border border-white/10 bg-slate-950/40 p-3">
+                              <div className="grid grid-cols-4 gap-2 items-center text-sm">
+                                <span className="truncate text-white">{item.name}</span>
+                                <span className="text-slate-300">{item.category}</span>
+                                <span className="text-slate-300">{item.quantity}</span>
+                                <span>
+                                  <span className={`inline-flex rounded-full px-2 py-1 text-[11px] font-medium ${status.badge}`}>
+                                    {status.label}
+                                  </span>
+                                </span>
+                              </div>
+                              <div className="mt-3 flex gap-2 flex-wrap">
+                                <Button size="sm" onClick={() => setEditingItem({ ...item })} className="bg-white/10 hover:bg-white/15">Editar</Button>
+                                <Button size="sm" variant="outline" onClick={() => toggleMaintenance(item.id)}>
+                                  {maintenanceIds.includes(item.id) ? "Liberar" : "Manutenção"}
+                                </Button>
+                                <Button size="sm" variant="destructive" onClick={() => deleteItem(item.id)}>Excluir</Button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {tab === "eventos" && (
+              <div className="space-y-4">
+                {role === "admin" && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setEventsView("lista")}
+                      className={`rounded-2xl border p-3 text-left transition ${
+                        eventsView === "lista"
+                          ? "border-emerald-400/30 bg-emerald-500/15 text-white"
+                          : "border-white/10 bg-white/5 text-slate-300"
+                      }`}
+                    >
+                      <p className="text-sm font-semibold">Programados</p>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEventsView("novo")}
+                      className={`rounded-2xl border p-3 text-left transition ${
+                        eventsView === "novo"
+                          ? "border-blue-400/30 bg-blue-500/15 text-white"
+                          : "border-white/10 bg-white/5 text-slate-300"
+                      }`}
+                    >
+                      <p className="text-sm font-semibold">Novo evento</p>
+                    </button>
+                  </div>
+                )}
+
+                {eventsView === "novo" && role === "admin" && (
+                  <div className="rounded-3xl border border-white/10 bg-white/5 p-4 backdrop-blur">
+                    <div className="space-y-3">
+                      <Input placeholder="Nome do evento" value={eventName} onChange={(e) => setEventName(e.target.value)} />
+                      <Input type="date" value={eventDate} onChange={(e) => setEventDate(e.target.value)} />
+                      <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-3">
+                        <p className="mb-2 text-sm font-medium text-white">Itens disponíveis</p>
+                        <div className="space-y-2 max-h-48 overflow-y-auto text-sm">
+                          {items.length === 0 ? (
+                            <p className="text-slate-400">Nenhum item catalogado.</p>
+                          ) : (
+                            items.map((item) => {
+                              const available = isItemAvailable(item);
+                              return (
+                                <label key={item.id} className={`flex items-center gap-2 rounded-xl px-2 py-2 ${!available ? "opacity-50" : ""}`}>
+                                  <input
+                                    type="checkbox"
+                                    disabled={!available}
+                                    checked={!!selectedItems.find((i) => i.id === item.id)}
+                                    onChange={() => toggleItem(item)}
+                                  />
+                                  <span className="text-slate-200">
+                                    {item.name} ({item.category}) - {item.quantity} unidade{item.quantity > 1 ? "s" : ""}
+                                    {!available && " • INDISPONÍVEL"}
+                                  </span>
+                                </label>
+                              );
+                            })
+                          )}
+                        </div>
+                      </div>
+                      <Button onClick={addEvent} className="w-full">Cadastrar evento</Button>
+                    </div>
+                  </div>
+                )}
+
+                {(eventsView === "lista" || role === "operador") && (
+                  <div className="space-y-3">
+                    {events.length === 0 ? (
+                      <div className="rounded-3xl border border-white/10 bg-white/5 p-4 text-sm text-slate-400 backdrop-blur">
+                        Nenhum evento programado.
+                      </div>
+                    ) : (
+                      (role === "operador" ? events.filter((ev) => !ev.finalizado) : events).map((ev) => (
+                        <div key={ev.id} className="rounded-3xl border border-white/10 bg-white/5 p-4 backdrop-blur">
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="text-lg font-semibold text-white">{ev.name}</p>
+                            {ev.finalizado && (
+                              <span className="rounded-full bg-green-500/15 px-3 py-1 text-xs font-medium text-green-300">
+                                Evento concluído
+                              </span>
+                            )}
+                          </div>
+
+                          {role === "admin" && (
+                            <div className="mt-4 grid gap-3 text-sm text-slate-300">
+                              <div className="grid grid-cols-2 gap-3">
+                                <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-3">
+                                  <p className="text-xs uppercase tracking-wide text-slate-400">Saída</p>
+                                  <p className="mt-1 font-medium">{ev.saidaConcluida ? "Concluída" : "Pendente"}</p>
+                                  <p className="mt-1 text-xs text-slate-400">Todos confirmados: {ev.items.length > 0 && ev.saidaConfirmados.length === ev.items.length ? "Sim" : "Não"}</p>
+                                  <p className="mt-1 text-xs text-slate-400">Horário: {ev.saidaConcluidaEm || "-"}</p>
+                                </div>
+                                <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-3">
+                                  <p className="text-xs uppercase tracking-wide text-slate-400">Entrada</p>
+                                  <p className="mt-1 font-medium">{ev.finalizado ? "Concluída" : "Pendente"}</p>
+                                  <p className="mt-1 text-xs text-slate-400">Todos confirmados: {ev.items.length > 0 && ev.entradaConfirmados.length === ev.items.length ? "Sim" : "Não"}</p>
+                                  <p className="mt-1 text-xs text-slate-400">Horário: {ev.entradaConcluidaEm || "-"}</p>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {role === "operador" && operatorView.eventId !== ev.id && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setOperatorView({ eventId: ev.id, tab: "saida" });
+                                setScanCode("");
+                                setScanMessage("");
+                              }}
+                              className="mt-4"
+                            >
+                              Abrir
+                            </Button>
+                          )}
+
+                          {role === "operador" && operatorView.eventId === ev.id && (
+                            <div className="mt-4 space-y-3">
+                              <div className="flex gap-2">
+                                {operatorView.tab === "saida" && (
+                                  <Button size="sm">Saída</Button>
+                                )}
+
+                                {ev.saidaConcluida && (
+                                  <Button
+                                    size="sm"
+                                    variant={operatorView.tab === "entrada" ? "default" : "outline"}
+                                    onClick={() => {
+                                      setOperatorView({ ...operatorView, tab: "entrada" });
+                                      setScanCode("");
+                                      setScanMessage("");
+                                    }}
+                                  >
+                                    Entrada
+                                  </Button>
+                                )}
+
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    setOperatorView({ eventId: null, tab: "saida" });
+                                    setScanCode("");
+                                    setScanMessage("");
+                                  }}
+                                >
+                                  Fechar
+                                </Button>
+                              </div>
+
+                              <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-3 space-y-3">
+                                <p className="text-sm font-medium text-white">
+                                  {operatorView.tab === "saida" ? "Leitura de saída" : "Leitura de entrada"}
+                                </p>
+
+                                <Input
+                                  placeholder="Leia ou digite o código de barras"
+                                  value={scanCode}
+                                  onChange={(e) => setScanCode(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") processBarcodeScan();
+                                  }}
+                                />
+
+                                <Button onClick={processBarcodeScan} className="w-full">Confirmar leitura</Button>
+
+                                {scanMessage && <p className="text-xs text-slate-300">{scanMessage}</p>}
+
+                                {ev.saidaConcluida &&
+                                  operatorView.tab === "saida" &&
+                                  scanMessage.includes("Deseja ir para entrada") && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => {
+                                        setOperatorView({ ...operatorView, tab: "entrada" });
+                                        setScanMessage("");
+                                        setScanCode("");
+                                      }}
+                                      className="w-full"
+                                    >
+                                      Ir para entrada
+                                    </Button>
+                                  )}
+
+                                {operatorView.tab === "saida" && !ev.saidaConcluida && (() => {
+                                  const totalItens = ev.items.length;
+                                  const totalConfirmados = ev.saidaConfirmados.length;
+                                  const podeConcluirSaida = totalItens > 0 && totalConfirmados === totalItens;
+
+                                  return (
+                                    <>
+                                      {!podeConcluirSaida && (
+                                        <p className="text-xs text-red-300">
+                                          Confirme a leitura de todos os itens para concluir a saída.
+                                        </p>
+                                      )}
+
+                                      <Button
+                                        variant="secondary"
+                                        disabled={!podeConcluirSaida}
+                                        onClick={async () => {
+                                          if (!podeConcluirSaida) return;
+
+                                          const patch = {
+                                            saidaConcluida: true,
+                                            saidaConcluidaEm: new Date().toLocaleString("pt-BR"),
+                                          };
+
+                                          const ok = await saveEventUpdate(ev.id, patch);
+                                          if (!ok) {
+                                            setScanMessage("Erro ao concluir saída.");
+                                            return;
+                                          }
+
+                                          setEvents(
+                                            events.map((event) =>
+                                              event.id === ev.id ? { ...event, ...patch } : event
+                                            )
+                                          );
+                                          setScanCode("");
+                                          setScanMessage("Bom evento! 🎉 Deseja ir para entrada?");
+                                        }}
+                                        className="w-full"
+                                      >
+                                        Concluir saída
+                                      </Button>
+                                    </>
+                                  );
+                                })()}
+                              </div>
+
+                              <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-3 space-y-2">
+                                {ev.items.length === 0 ? (
+                                  <p className="text-xs text-slate-400">Sem itens</p>
+                                ) : (
+                                  ev.items.map((i) => {
+                                    const confirmed = isConfirmed(ev, i, operatorView.tab);
+                                    return (
+                                      <div key={i.id} className="flex items-center justify-between gap-2 rounded-xl border border-white/5 bg-white/[0.03] px-3 py-2 text-xs">
+                                        <div>
+                                          <p className="text-white">
+                                            {i.name} ({i.category}) - {i.quantity} unidade{i.quantity > 1 ? "s" : ""}
+                                          </p>
+                                          <p className="text-slate-400">Código: {i.barcode}</p>
+                                        </div>
+                                        <span className={confirmed ? "font-medium text-green-400" : "font-medium text-red-400"}>
+                                          {confirmed ? "Lido" : "Pendente"}
+                                        </span>
+                                      </div>
+                                    );
+                                  })
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="mt-6 rounded-3xl border border-red-500/20 bg-red-500/10 p-3 backdrop-blur">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-red-100">Janela de erros</p>
+                  <p className="text-xs text-red-200/80">Tudo que der erro no app vai aparecer aqui para você me mandar.</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="rounded-xl bg-black/20 px-2 py-1 text-xs text-red-100">
+                    {errorLog.length} erro{errorLog.length === 1 ? "" : "s"}
+                  </span>
+                  <Button size="sm" variant="outline" onClick={() => setErrorPanelOpen((prev) => !prev)}>
+                    {errorPanelOpen ? "Ocultar" : "Mostrar"}
+                  </Button>
+                </div>
+              </div>
+
+              {errorPanelOpen && (
+                <div className="mt-3 space-y-3">
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="destructive" onClick={clearErrorLog} disabled={errorLog.length === 0}>
+                      Limpar erros
+                    </Button>
+                  </div>
+
+                  <div className="max-h-80 space-y-2 overflow-auto rounded-2xl border border-white/10 bg-slate-950/50 p-2">
+                    {errorLog.length === 0 ? (
+                      <p className="p-2 text-xs text-slate-400">Nenhum erro registrado até agora.</p>
+                    ) : (
+                      errorLog.map((entry) => (
+                        <div key={entry.id} className="rounded-2xl border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-50">
+                          <p><span className="font-semibold">Origem:</span> {entry.source}</p>
+                          <p className="mt-1 break-words"><span className="font-semibold">Mensagem:</span> {entry.message}</p>
+                          {entry.details && <p className="mt-1 break-words"><span className="font-semibold">Detalhes:</span> {entry.details}</p>}
+                          <p className="mt-1 text-red-100/80"><span className="font-semibold">Horário:</span> {entry.time}</p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => selectRole(null)}
+              className="mt-6 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white transition hover:bg-white/10"
+            >
+              Trocar perfil
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
