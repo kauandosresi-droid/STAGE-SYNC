@@ -1596,18 +1596,24 @@
                             </div>
 
                             <div className="mt-3 flex gap-2">
-                              <Button size="sm" variant={operatorView.tab === "saida" ? "default" : "outline"} onClick={() => {
-                                setOperatorView((prev) => ({ ...prev, tab: "saida" }));
-                                setScanCode("");
-                                setFeedback("");
-                              }} className={operatorView.tab === "saida" ? "rounded-2xl bg-blue-600 hover:bg-blue-500" : "rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10"}>Saída</Button>
+                              {operatorView.tab === "saida" && (
+                                <Button size="sm" variant="default" onClick={() => {
+                                  setOperatorView((prev) => ({ ...prev, tab: "saida" }));
+                                  setScanCode("");
+                                  setFeedback("");
+                                }} className="rounded-2xl bg-blue-600 hover:bg-blue-500">
+                                  Saída
+                                </Button>
+                              )}
 
-                              {activeOperatorEvent.saidaConcluida && (
-                                <Button size="sm" variant={operatorView.tab === "entrada" ? "default" : "outline"} onClick={() => {
+                              {operatorView.tab === "entrada" && (
+                                <Button size="sm" variant="default" onClick={() => {
                                   setOperatorView((prev) => ({ ...prev, tab: "entrada" }));
                                   setScanCode("");
                                   setFeedback("");
-                                }} className={operatorView.tab === "entrada" ? "rounded-2xl bg-emerald-600 hover:bg-emerald-500" : "rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10"}>Entrada</Button>
+                                }} className="rounded-2xl bg-emerald-600 hover:bg-emerald-500">
+                                  Entrada
+                                </Button>
                               )}
                             </div>
 
@@ -1651,7 +1657,7 @@
                                       setEvents(events.map((event) => event.id === activeOperatorEvent.id ? { ...event, ...patch } : event));
                                       setScanCode("");
                                       setFeedback("Saída concluída. Agora a entrada está liberada.", "success");
-                                    }} className="w-full rounded-2xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50">Concluir saída</Button>
+                                    }} className="w-full rounded-2xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50">Concluir saída da empresa</Button>
                                   </>
                                 );
                               })()}
@@ -1689,12 +1695,12 @@
                           .map((ev) => {
                             const stage = getEventStage(ev);
                             return (
-                              <div key={ev.id} className="rounded-3xl border border-white/10 bg-white/5 p-4 backdrop-blur">
+                              <div key={ev.id} className={`border border-white/10 bg-white/5 backdrop-blur ${ev.finalizado ? "rounded-2xl p-3" : "rounded-3xl p-4"}`}>
                                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                                   <div>
                                     <div className="flex flex-wrap items-center gap-2">
                                       <p className="text-lg font-semibold text-white">{ev.name}</p>
-                                      <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-medium ${stage.badge}`}>{stage.label}</span>
+                                      <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-medium ${stage.badge}`}>{ev.finalizado ? "Evento executado" : stage.label}</span>
                                     </div>
                                     <div className="mt-3 rounded-2xl border border-white/10 bg-slate-950/40 p-3 text-sm text-slate-300 space-y-2">
                                       <p><span className="text-slate-400">Data:</span> {ev.date || "-"}</p>
@@ -1706,7 +1712,9 @@
 
                                   {role === "admin" ? (
                                     <div className="flex flex-wrap gap-2">
-                                      <Button size="sm" onClick={() => startEditEvent(ev)} className="bg-white/10 hover:bg-white/15">Editar evento</Button>
+                                      {!ev.finalizado && (
+                                        <Button size="sm" onClick={() => startEditEvent(ev)} className="bg-white/10 hover:bg-white/15">Editar evento</Button>
+                                      )}
                                       <Button size="sm" variant="destructive" onClick={() => deleteEvent(ev.id)}>Excluir evento</Button>
                                     </div>
                                   ) : (
@@ -1728,7 +1736,7 @@
                                     </div>
                                     <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-3">
                                       <p className="text-xs uppercase tracking-wide text-slate-400">Entrada</p>
-                                      <p className="mt-1 font-medium text-white">{ev.finalizado ? "Concluída" : "Pendente"}</p>
+                                      <p className="mt-1 font-medium text-white">{ev.finalizado ? "Executado" : "Pendente"}</p>
                                       <p className="mt-1 text-xs text-slate-400">Confirmados: {ev.entradaConfirmados.length} / {ev.items.length}</p>
                                       <p className="mt-1 text-xs text-slate-400">Horário: {ev.entradaConcluidaEm || "-"}</p>
                                     </div>
