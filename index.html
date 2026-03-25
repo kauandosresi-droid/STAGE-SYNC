@@ -8,7 +8,7 @@
   <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
-  <script src="https://unpkg.com/html5-qrcode"></script>
+  <script src="https://unpkg.com/@zxing/library@latest"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 </head>
 <body class="bg-slate-950">
@@ -86,111 +86,53 @@
       async function stopBarcodeScanner() {
         try {
           if (scannerRef.current) {
-            await scannerRef.current.stop();
-            await scannerRef.current.clear();
+            scannerRef.current.reset();
             scannerRef.current = null;
           }
         } catch (_) {}
       }
 
-      async function openBarcodeScanner(target = "create") {
+      function openBarcodeScanner(target = "create") {
         setScannerTarget(target);
         setScannerOpen(true);
       }
 
       async function startBarcodeScanner() {
         try {
-          if (!window.Html5Qrcode) {
-            setScanMessage("Biblioteca da câmera não foi carregada.");
+          const codeReader = new ZXing.BrowserMultiFormatReader();
+          scannerRef.current = codeReader;
+
+          const videoInputDevices = await codeReader.listVideoInputDevices();
+          const backCamera =
+            videoInputDevices.find((d) => (d.label || "").toLowerCase().includes("back")) ||
+            videoInputDevices.find((d) => (d.label || "").toLowerCase().includes("traseira")) ||
+            videoInputDevices[0];
+
+          if (!backCamera) {
+            throw new Error("Nenhuma câmera encontrada");
+          }
+
+          await codeReader.decodeFromVideoDevice(backCamera.deviceId, "reader", (result) => {
+            if (!result) return;
+
+            const code = normalizeCode(result.text);
+            if (!code) return;
+
+            if (scannerTarget === "edit" && editingItem) {
+              setEditingItem((prev) => (prev ? { ...prev, barcode: code } : prev));
+            } else {
+              setBarcode(code);
+            }
+
+            setScanMessage("Código lido com sucesso.");
             setScannerOpen(false);
-            return;
-          }
-
-          if (scannerRef.current) {
-            await stopBarcodeScanner();
-          }
-
-          const html5QrCode = new Html5Qrcode("reader");
-          scannerRef.current = html5QrCode;
-
-          await html5QrCode.start(
-            { facingMode: { exact: "environment" } },
-            {
-              fps: 20,
-              qrbox: { width: 260, height: 100 },
-              aspectRatio: 1.7778,
-              disableFlip: true,
-              rememberLastUsedCamera: true,
-              formatsToSupport: [
-                Html5QrcodeSupportedFormats.EAN_13,
-                Html5QrcodeSupportedFormats.EAN_8,
-                Html5QrcodeSupportedFormats.UPC_A,
-                Html5QrcodeSupportedFormats.UPC_E,
-                Html5QrcodeSupportedFormats.CODE_128,
-                Html5QrcodeSupportedFormats.CODE_39,
-                Html5QrcodeSupportedFormats.ITF,
-              ],
-            },
-            async (decodedText) => {
-              const code = normalizeCode(decodedText);
-              if (!code) return;
-
-              if (scannerTarget === "edit" && editingItem) {
-                setEditingItem((prev) => prev ? { ...prev, barcode: code } : prev);
-              } else {
-                setBarcode(code);
-              }
-
-              setScanMessage("Código lido pela câmera.");
-              setScannerOpen(false);
-              await stopBarcodeScanner();
-            },
-            () => {}
-          );
+            codeReader.reset();
+            scannerRef.current = null;
+          });
         } catch (error) {
-          try {
-            const html5QrCode = new Html5Qrcode("reader");
-            scannerRef.current = html5QrCode;
-
-            await html5QrCode.start(
-              { facingMode: "environment" },
-              {
-                fps: 20,
-                qrbox: { width: 260, height: 100 },
-                aspectRatio: 1.7778,
-                disableFlip: true,
-                rememberLastUsedCamera: true,
-                formatsToSupport: [
-                  Html5QrcodeSupportedFormats.EAN_13,
-                  Html5QrcodeSupportedFormats.EAN_8,
-                  Html5QrcodeSupportedFormats.UPC_A,
-                  Html5QrcodeSupportedFormats.UPC_E,
-                  Html5QrcodeSupportedFormats.CODE_128,
-                  Html5QrcodeSupportedFormats.CODE_39,
-                  Html5QrcodeSupportedFormats.ITF,
-                ],
-              },
-              async (decodedText) => {
-                const code = normalizeCode(decodedText);
-                if (!code) return;
-
-                if (scannerTarget === "edit" && editingItem) {
-                  setEditingItem((prev) => prev ? { ...prev, barcode: code } : prev);
-                } else {
-                  setBarcode(code);
-                }
-
-                setScanMessage("Código lido pela câmera.");
-                setScannerOpen(false);
-                await stopBarcodeScanner();
-              },
-              () => {}
-            );
-          } catch (_) {
-            setScanMessage("Não foi possível ler código de barras pela câmera. Tente aproximar mais, melhorar a luz ou usar o código manualmente.");
-            setScannerOpen(false);
-            await stopBarcodeScanner();
-          }
+          setScanMessage("Erro ao iniciar câmera ou ler código de barras.");
+          setScannerOpen(false);
+          await stopBarcodeScanner();
         }
       }
 
