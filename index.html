@@ -50,7 +50,7 @@
       );
     }
 
-    export default function App() {
+    function App() {
       const [role, setRole] = useState(null);
       const [tab, setTab] = useState("patrimonio");
       const [eventsView, setEventsView] = useState("lista");
@@ -87,14 +87,20 @@
         return String(value || "").trim();
       }
 
+      function toArray(value) {
+        if (Array.isArray(value)) return value;
+        if (value == null || value === "") return [];
+        try { return JSON.parse(value); } catch { return []; }
+      }
+
       function normalizeEvent(event) {
         return {
           ...event,
-          items: Array.isArray(event.items) ? event.items : (event.items || []),
-          saidaConfirmados: Array.isArray(event.saidaConfirmados) ? event.saidaConfirmados : (event.saidaConfirmados || []),
-          entradaConfirmados: Array.isArray(event.entradaConfirmados) ? event.entradaConfirmados : (event.entradaConfirmados || []),
-          saidaHistorico: Array.isArray(event.saidaHistorico) ? event.saidaHistorico : (event.saidaHistorico || []),
-          entradaHistorico: Array.isArray(event.entradaHistorico) ? event.entradaHistorico : (event.entradaHistorico || []),
+          items: toArray(event.items),
+          saidaConfirmados: toArray(event.saidaConfirmados),
+          entradaConfirmados: toArray(event.entradaConfirmados),
+          saidaHistorico: toArray(event.saidaHistorico),
+          entradaHistorico: toArray(event.entradaHistorico),
           saidaConcluida: !!event.saidaConcluida,
           finalizado: !!event.finalizado,
           saidaConcluidaEm: event.saidaConcluidaEm || "",
@@ -470,7 +476,6 @@
         if (maintenanceIds.includes(item.id)) {
           return {
             label: "Em manutenção",
-            detail: "Parado para manutenção",
             badge: "text-yellow-700 bg-yellow-100",
           };
         }
@@ -482,7 +487,6 @@
         if (activeEvent) {
           return {
             label: "Em uso",
-            detail: `Evento: ${activeEvent.name} • Etapa: ${activeEvent.saidaConcluida ? "entrada" : "saída"}`,
             badge: activeEvent.saidaConcluida
               ? "text-purple-700 bg-purple-100"
               : "text-blue-700 bg-blue-100",
@@ -491,7 +495,6 @@
 
         return {
           label: "Disponível",
-          detail: "Livre para uso",
           badge: "text-green-700 bg-green-100",
         };
       }
@@ -879,7 +882,7 @@
                                 setScanCode("");
                                 setScanMessage("");
                               }}
-                              className="mt-4"
+                              className="mt-4 rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10"
                             >
                               Abrir
                             </Button>
@@ -889,7 +892,7 @@
                             <div className="mt-4 space-y-3">
                               <div className="flex gap-2">
                                 {operatorView.tab === "saida" && (
-                                  <Button size="sm">Saída</Button>
+                                  <Button size="sm" className="rounded-2xl bg-blue-600 hover:bg-blue-500">Saída</Button>
                                 )}
 
                                 {ev.saidaConcluida && (
@@ -901,6 +904,7 @@
                                       setScanCode("");
                                       setScanMessage("");
                                     }}
+                                    className={operatorView.tab === "entrada" ? "rounded-2xl bg-emerald-600 hover:bg-emerald-500" : "rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10"}
                                   >
                                     Entrada
                                   </Button>
@@ -914,6 +918,7 @@
                                     setScanCode("");
                                     setScanMessage("");
                                   }}
+                                  className="rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10"
                                 >
                                   Fechar
                                 </Button>
@@ -933,9 +938,10 @@
                                       processBarcodeScan();
                                     }
                                   }}
+                                  className="bg-white/5 text-white border-white/10"
                                 />
 
-                                <Button onClick={processBarcodeScan} className="w-full">Confirmar leitura</Button>
+                                <Button onClick={processBarcodeScan} className="w-full rounded-2xl bg-blue-600 hover:bg-blue-500">Confirmar leitura</Button>
 
                                 {scanMessage && <p className="text-xs text-slate-300">{scanMessage}</p>}
 
@@ -950,7 +956,7 @@
                                         setScanMessage("");
                                         setScanCode("");
                                       }}
-                                      className="w-full"
+                                      className="w-full rounded-2xl border-white/10 bg-white/5 text-white hover:bg-white/10"
                                     >
                                       Ir para entrada
                                     </Button>
@@ -994,7 +1000,7 @@
                                           setScanCode("");
                                           setScanMessage("Bom evento! 🎉 Deseja ir para entrada?");
                                         }}
-                                        className="w-full"
+                                        className="w-full rounded-2xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50"
                                       >
                                         Concluir saída
                                       </Button>
@@ -1041,14 +1047,6 @@
                 )}
               </div>
             )}
-
-            <button
-              type="button"
-              onClick={() => selectRole(null)}
-              className="mt-6 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white transition hover:bg-white/10"
-            >
-              Trocar perfil
-            </button>
           </div>
         </div>
       );
