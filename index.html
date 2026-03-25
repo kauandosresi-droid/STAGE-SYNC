@@ -663,6 +663,8 @@
             );
 
             const updatedEvent = updatedEvents.find((e) => e.id === activeOperatorEvent.id);
+            setEvents(updatedEvents);
+
             const ok = await saveEventUpdate(updatedEvent.id, {
               saidaConfirmados: updatedEvent.saidaConfirmados,
               saidaHistorico: updatedEvent.saidaHistorico,
@@ -672,8 +674,6 @@
               setScanMessage("Erro ao salvar saída.");
               return;
             }
-
-            setEvents(updatedEvents);
             setScanMessage(`Saída confirmada: ${foundItem.name}`);
           }
         }
@@ -733,6 +733,8 @@
               setOperatorView({ eventId: null, tab: "saida" });
               setScanMessage("Evento finalizado! ✅");
             } else {
+              setEvents(updatedEvents);
+
               const ok = await saveEventUpdate(updatedEvent.id, {
                 entradaConfirmados: updatedEvent.entradaConfirmados,
                 entradaHistorico: updatedEvent.entradaHistorico,
@@ -742,8 +744,6 @@
                 setScanMessage("Erro ao salvar entrada.");
                 return;
               }
-
-              setEvents(updatedEvents);
               setScanMessage(`Entrada confirmada: ${foundItem.name}`);
             }
           }
