@@ -10,6 +10,15 @@
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <script src="https://unpkg.com/html5-qrcode"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+@keyframes scanMove {
+  0% { top: 0%; }
+  100% { top: 100%; }
+}
+.animate-scan {
+  animation: scanMove 2s linear infinite;
+}
+</style>
 </head>
 <body class="bg-slate-950">
   <div id="root"></div>
@@ -116,7 +125,7 @@
             {
               fps: 10,
               qrbox: { width: 250, height: 250 },
-              formatsToSupport: [window.Html5QrcodeSupportedFormats.QR_CODE]
+              
             },
             async (decodedText) => {
               const code = normalizeCode(decodedText);
@@ -875,7 +884,15 @@
                   </Button>
                 </div>
 
-                <div id="reader" className="overflow-hidden rounded-2xl bg-black min-h-[300px]" />
+                <div className="relative">
+                  <div id="reader" className="overflow-hidden rounded-2xl bg-black min-h-[300px]" />
+
+                  <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                    <div className="w-[220px] h-[220px] border-2 border-green-400 rounded-xl relative overflow-hidden">
+                      <div className="absolute left-0 right-0 h-[2px] bg-green-400 animate-scan" />
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           )}
