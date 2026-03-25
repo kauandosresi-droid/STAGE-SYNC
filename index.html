@@ -68,6 +68,8 @@
 
       const [eventName, setEventName] = useState("");
       const [eventDate, setEventDate] = useState("");
+      const [eventLocation, setEventLocation] = useState("");
+      const [eventNotes, setEventNotes] = useState("");
       const [selectedItems, setSelectedItems] = useState([]);
 
       const [operatorView, setOperatorView] = useState({ eventId: null, tab: "saida" });
@@ -105,6 +107,8 @@
           finalizado: !!event.finalizado,
           saidaConcluidaEm: event.saidaConcluidaEm || "",
           entradaConcluidaEm: event.entradaConcluidaEm || "",
+          location: event.location || "",
+          notes: event.notes || "",
         };
       }
 
@@ -228,6 +232,17 @@
           setTab("patrimonio");
           setEventsView("lista");
         }
+      }
+
+      function switchUser() {
+        setRole(null);
+        setTab("patrimonio");
+        setEventsView("lista");
+        setEditingItem(null);
+        setSelectedItems([]);
+        setOperatorView({ eventId: null, tab: "saida" });
+        setScanCode("");
+        setScanMessage("");
       }
 
       async function addItem() {
@@ -373,6 +388,8 @@
         const newEvent = {
           name: eventName,
           date: eventDate,
+          location: eventLocation,
+          notes: eventNotes,
           items: selectedItems,
           saidaConfirmados: [],
           entradaConfirmados: [],
@@ -394,6 +411,8 @@
         setEvents([normalizeEvent(data || { ...newEvent, id: Date.now() }), ...events]);
         setEventName("");
         setEventDate("");
+        setEventLocation("");
+        setEventNotes("");
         setSelectedItems([]);
         setEventsView("lista");
         setScanMessage("");
@@ -687,8 +706,19 @@
                   <p className="text-xs uppercase tracking-[0.22em] text-blue-200">StageSync</p>
                   <h1 className="mt-1 text-2xl font-bold tracking-tight">{role === "admin" ? "Painel administrativo" : "Painel do operador"}</h1>
                 </div>
-                <div className="rounded-2xl border border-white/10 bg-white/10 px-3 py-2 text-xs font-medium text-slate-200">
-                  {role}
+                <div className="flex items-center gap-2">
+                  <div className="rounded-2xl border border-white/10 bg-white/10 px-3 py-2 text-xs font-medium text-slate-200">
+                    {role}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={switchUser}
+                    className="rounded-2xl"
+                  >
+                    Trocar usuário
+                  </Button>
                 </div>
               </div>
             </div>
@@ -870,6 +900,13 @@
                     <div className="space-y-3">
                       <Input placeholder="Nome do evento" value={eventName} onChange={(e) => setEventName(e.target.value)} />
                       <Input type="date" value={eventDate} onChange={(e) => setEventDate(e.target.value)} />
+                      <Input placeholder="Local do evento" value={eventLocation} onChange={(e) => setEventLocation(e.target.value)} />
+                      <textarea
+                        className="min-h-[110px] w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white outline-none placeholder:text-slate-500"
+                        placeholder="Informações adicionais"
+                        value={eventNotes}
+                        onChange={(e) => setEventNotes(e.target.value)}
+                      />
                       <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-3">
                         <p className="mb-2 text-sm font-medium text-white">Itens disponíveis</p>
                         <div className="space-y-2 max-h-48 overflow-y-auto text-sm">
@@ -920,6 +957,12 @@
                                 Evento concluído
                               </span>
                             )}
+                          </div>
+
+                          <div className="mt-3 rounded-2xl border border-white/10 bg-slate-950/40 p-3 text-sm text-slate-300 space-y-2">
+                            <p><span className="text-slate-400">Data:</span> {ev.date || "-"}</p>
+                            <p><span className="text-slate-400">Local:</span> {ev.location || "-"}</p>
+                            <p><span className="text-slate-400">Informações:</span> {ev.notes || "-"}</p>
                           </div>
 
                           {role === "admin" && (
@@ -984,6 +1027,11 @@
 
                           {role === "operador" && operatorView.eventId === ev.id && (
                             <div className="mt-4 space-y-3">
+                              <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-3 text-sm text-slate-300 space-y-2">
+                                <p><span className="text-slate-400">Data:</span> {ev.date || "-"}</p>
+                                <p><span className="text-slate-400">Local:</span> {ev.location || "-"}</p>
+                                <p><span className="text-slate-400">Informações:</span> {ev.notes || "-"}</p>
+                              </div>
                               <div className="flex gap-2">
                                 {operatorView.tab === "saida" && (
                                   <Button size="sm" className="rounded-2xl bg-blue-600 hover:bg-blue-500">Saída</Button>
